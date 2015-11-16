@@ -58,8 +58,7 @@ class RequestHandler {
     private final io.netty.util.Timer scheduler;
 
     private volatile List<Host> triedHosts;
-
-    private volatile Map<InetSocketAddress, Throwable> errors;
+    private final Map<InetSocketAddress, Throwable> errors = new ConcurrentHashMap<InetSocketAddress, Throwable>();
 
     private final Timer.Context timerContext;
     private final long startTime;
@@ -151,9 +150,7 @@ class RequestHandler {
     }
 
     private void logError(InetSocketAddress address, Throwable exception) {
-        logger.debug("Error querying {}, trying next host (error is: {})", address, exception.toString());
-        if (errors == null)
-            errors = new ConcurrentHashMap<InetSocketAddress, Throwable>();
+        logger.debug("Error querying {} : {}", address, exception.toString());
         errors.put(address, exception);
     }
 
@@ -213,8 +210,7 @@ class RequestHandler {
     private void reportNoMoreHosts(SpeculativeExecution execution) {
         runningExecutions.remove(execution);
         if (runningExecutions.isEmpty())
-            setFinalException(execution, null, new NoHostAvailableException(
-                errors == null ? Collections.<InetSocketAddress, Throwable>emptyMap() : errors));
+            setFinalException(execution, null, new NoHostAvailableException(errors));
     }
 
     private boolean metricsEnabled() {
