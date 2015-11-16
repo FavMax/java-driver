@@ -15,13 +15,11 @@
  */
 package com.datastax.driver.core.policies;
 
-import org.scassandra.http.client.PrimingRequest;
 import org.testng.annotations.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.fail;
 import static org.scassandra.http.client.PrimingRequest.Result.read_request_timeout;
-import static org.scassandra.http.client.PrimingRequest.Result.server_error;
 import static org.scassandra.http.client.PrimingRequest.Result.unavailable;
 
 import com.datastax.driver.core.ConsistencyLevel;
@@ -29,14 +27,13 @@ import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Statement;
 import com.datastax.driver.core.WriteType;
 import com.datastax.driver.core.exceptions.DriverException;
-import com.datastax.driver.core.exceptions.ServerError;
 import com.datastax.driver.core.exceptions.UnavailableException;
 
 /**
  * Integration test with a custom implementation, to test retry and ignore decisions.
  */
-public class CustomRetryPolicyIntegrationTest extends AbstractRetryPolicyIntegrationTest {
-    public CustomRetryPolicyIntegrationTest() {
+public class IdempotenceAwareRetryPolicyIntegrationTest extends AbstractRetryPolicyIntegrationTest {
+    public IdempotenceAwareRetryPolicyIntegrationTest() {
         super(new CustomRetryPolicy());
     }
 
@@ -70,44 +67,6 @@ public class CustomRetryPolicyIntegrationTest extends AbstractRetryPolicyIntegra
         assertQueried(3, 0);
     }
 
-    @Test(groups = "short")
-    public void should_ignore_client_timeouts() {
-        // Rely on read timeouts to trigger errors that cause an execution to move to the next node
-        cluster.getConfiguration().getSocketOptions().setReadTimeoutMillis(100);
-        scassandras
-            // execution1 starts with host1, which will time out at t=100
-            .prime(1, PrimingRequest.queryBuilder()
-                .withQuery("mock query")
-                .withFixedDelay(1000)
-                .withRows(row("result", "result1"))
-                .build());
-
-        ResultSet rs = query();
-        assertThat(rs.iterator().hasNext()).isFalse(); // ignore decisions produce empty result sets
-
-        assertOnClientTimeoutWasCalled(1);
-        assertThat(errors.getRetriesOnClientTimeout().getCount()).isEqualTo(1);
-        assertQueried(1, 1);
-        assertQueried(2, 0);
-        assertQueried(3, 0);
-    }
-
-    @Test(groups = "short")
-    public void should_rethrow_unexpected_exception() {
-        simulateError(1, server_error);
-
-        try {
-            query();
-            fail("expected a server error");
-        } catch (ServerError e) {/*expected*/}
-
-        assertOnUnexpectedExceptionWasCalled(1);
-        assertQueried(1, 1);
-        assertQueried(2, 0);
-        assertQueried(3, 0);
-    }
-
-
     /**
      * Ignores read and write timeouts, and retries at most once on unavailable.
      */
@@ -137,7 +96,7 @@ public class CustomRetryPolicyIntegrationTest extends AbstractRetryPolicyIntegra
 
         @Override
         public RetryDecision onUnexpectedException(Statement statement, ConsistencyLevel cl, DriverException e, int nbRetry) {
-            return RetryDecision.rethrow();
+            return RetryDecision.tryNextHost(null);
         }
     }
 }

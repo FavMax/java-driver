@@ -174,14 +174,9 @@ public class QueryLoggerErrorsTest extends ScassandraTestBase.PerClassCluster {
         } catch(Exception e) {
             if(e instanceof NoHostAvailableException) {
                 assertThat(expectedException).isEqualTo(NoHostAvailableException.class);
-                // ok
                 Throwable error = ((NoHostAvailableException)e).getErrors().get(hostAddress);
                 assertThat(error).isNotNull();
-                if(loggedException.getSuperclass() == DriverInternalError.class) {
-                    assertThat(error).isOfAnyClassIn(DriverException.class);
-                } else {
-                    assertThat(error).isOfAnyClassIn(loggedException);
-                }
+                assertThat(error).isInstanceOf(loggedException);
             } else {
                 assertThat(e).isInstanceOf(expectedException);
             }

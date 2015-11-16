@@ -34,6 +34,7 @@ import static org.mockito.Matchers.anyInt;
 import static org.mockito.Mockito.times;
 
 import com.datastax.driver.core.*;
+import com.datastax.driver.core.exceptions.DriverException;
 
 /**
  * Base class for retry policy integration tests.
@@ -52,9 +53,9 @@ public class AbstractRetryPolicyIntegrationTest {
     protected Host host1, host2, host3;
     protected Session session;
 
-    protected RetryPolicy retryPolicy;
+    protected ClientFailureAwareRetryPolicy retryPolicy;
 
-    protected AbstractRetryPolicyIntegrationTest(RetryPolicy retryPolicy) {
+    protected AbstractRetryPolicyIntegrationTest(ClientFailureAwareRetryPolicy retryPolicy) {
         this.retryPolicy = Mockito.spy(retryPolicy);
     }
 
@@ -100,7 +101,7 @@ public class AbstractRetryPolicyIntegrationTest {
                 .build());
     }
 
-    private static List<Map<String, ?>> row(String key, String value) {
+    protected static List<Map<String, ?>> row(String key, String value) {
         return ImmutableList.<Map<String, ?>>of(ImmutableMap.of(key, value));
     }
 
@@ -126,6 +127,16 @@ public class AbstractRetryPolicyIntegrationTest {
     protected void assertOnUnavailableWasCalled(int times) {
         Mockito.verify(retryPolicy, times(times)).onUnavailable(
             any(Statement.class), any(ConsistencyLevel.class), anyInt(), anyInt(), anyInt());
+    }
+
+    protected void assertOnClientTimeoutWasCalled(int times) {
+        Mockito.verify(retryPolicy, times(times)).onClientTimeout(
+            any(Statement.class), any(ConsistencyLevel.class), anyInt());
+    }
+
+    protected void assertOnUnexpectedExceptionWasCalled(int times) {
+        Mockito.verify(retryPolicy, times(times)).onUnexpectedException(
+            any(Statement.class), any(ConsistencyLevel.class), any(DriverException.class), anyInt());
     }
 
     protected void assertQueried(int hostNumber, int times) {

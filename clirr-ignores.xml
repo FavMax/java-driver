@@ -47,18 +47,4 @@
     <justification>False positive, the enclosing class is package-private so this was never exposed</justification>
   </difference>
 
-  <difference>
-    <differenceType>7012</differenceType> <!-- method added to interface -->
-    <className>com/datastax/driver/core/policies/RetryPolicy</className>
-    <method>com.datastax.driver.core.policies.RetryPolicy$RetryDecision onClientTimeout(com.datastax.driver.core.Statement, com.datastax.driver.core.ConsistencyLevel, int)</method>
-    <justification>JAVA-819</justification>
-  </difference>
-
-  <difference>
-    <differenceType>7012</differenceType> <!-- method added to interface -->
-    <className>com/datastax/driver/core/policies/RetryPolicy</className>
-    <method>com.datastax.driver.core.policies.RetryPolicy$RetryDecision onUnexpectedException(com.datastax.driver.core.Statement, com.datastax.driver.core.ConsistencyLevel, java.lang.Exception, int)</method>
-    <justification>JAVA-819</justification>
-  </difference>
-
 </differences>

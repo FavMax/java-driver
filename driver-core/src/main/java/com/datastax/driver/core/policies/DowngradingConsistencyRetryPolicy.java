@@ -18,6 +18,7 @@ package com.datastax.driver.core.policies;
 import com.datastax.driver.core.ConsistencyLevel;
 import com.datastax.driver.core.Statement;
 import com.datastax.driver.core.WriteType;
+import com.datastax.driver.core.exceptions.DriverException;
 
 /**
  * A retry policy that sometimes retry with a lower consistency level than
@@ -66,7 +67,7 @@ import com.datastax.driver.core.WriteType;
  * to make sure the data is persisted, and that reading something is better
  * than reading nothing, even if there is a risk of reading stale data.
  */
-public class DowngradingConsistencyRetryPolicy implements RetryPolicy {
+public class DowngradingConsistencyRetryPolicy implements ClientFailureAwareRetryPolicy {
 
     public static final DowngradingConsistencyRetryPolicy INSTANCE = new DowngradingConsistencyRetryPolicy();
 
@@ -225,13 +226,14 @@ public class DowngradingConsistencyRetryPolicy implements RetryPolicy {
      * @param statement the original query for which the consistency level cannot
      * be achieved.
      * @param cl the original consistency level for the operation.
+     * @param e the original exception.
      * @param nbRetry the number of retry already performed for this operation.
      * @return the retry decision. If {@code RetryDecision.RETHROW} is returned,
      * the exception passed to this method will
      * be rethrown for the operation.
      */
     @Override
-    public RetryDecision onUnexpectedException(Statement statement, ConsistencyLevel cl, Exception e, int nbRetry) {
+    public RetryDecision onUnexpectedException(Statement statement, ConsistencyLevel cl, DriverException e, int nbRetry) {
         return RetryDecision.tryNextHost(cl);
     }
 }

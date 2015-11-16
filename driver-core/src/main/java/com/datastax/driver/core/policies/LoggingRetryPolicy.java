@@ -21,6 +21,7 @@ import org.slf4j.LoggerFactory;
 import com.datastax.driver.core.ConsistencyLevel;
 import com.datastax.driver.core.Statement;
 import com.datastax.driver.core.WriteType;
+import com.datastax.driver.core.exceptions.DriverException;
 
 /**
  * A retry policy that wraps another policy, logging the decision made by its sub-policy.
@@ -29,7 +30,7 @@ import com.datastax.driver.core.WriteType;
  * RETHROW decisions are just meant to propagate the cassandra exception). The
  * logging is done at the INFO level.
  */
-public class LoggingRetryPolicy implements RetryPolicy {
+public class LoggingRetryPolicy implements ClientFailureAwareRetryPolicy {
 
     private static final Logger logger = LoggerFactory.getLogger(LoggingRetryPolicy.class);
     private final RetryPolicy policy;
@@ -98,7 +99,11 @@ public class LoggingRetryPolicy implements RetryPolicy {
 
     @Override
     public RetryDecision onClientTimeout(Statement statement, ConsistencyLevel cl, int nbRetry) {
-        RetryDecision decision = policy.onClientTimeout(statement, cl, nbRetry);
+        RetryDecision decision;
+        if (policy instanceof ClientFailureAwareRetryPolicy)
+            decision = ((ClientFailureAwareRetryPolicy)policy).onClientTimeout(statement, cl, nbRetry);
+        else
+            decision = RetryDecision.tryNextHost(null);
         switch (decision.getType()) {
             case IGNORE:
                 logger.info(String.format("Ignoring client timeout (initial consistency: %s, retries: %d)", cl, nbRetry));
@@ -111,8 +116,12 @@ public class LoggingRetryPolicy implements RetryPolicy {
     }
 
     @Override
-    public RetryDecision onUnexpectedException(Statement statement, ConsistencyLevel cl, Exception e, int nbRetry) {
-        RetryDecision decision = policy.onUnexpectedException(statement, cl, e, nbRetry);
+    public RetryDecision onUnexpectedException(Statement statement, ConsistencyLevel cl, DriverException e, int nbRetry) {
+        RetryDecision decision;
+        if (policy instanceof ClientFailureAwareRetryPolicy)
+            decision = ((ClientFailureAwareRetryPolicy)policy).onUnexpectedException(statement, cl, e, nbRetry);
+        else
+            decision = RetryDecision.tryNextHost(null);
         switch (decision.getType()) {
             case IGNORE:
                 logger.info(String.format("Ignoring unexpected exception (initial consistency: %s, retries: %d)", cl, nbRetry), e);

@@ -24,6 +24,7 @@ import org.testng.annotations.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.datastax.driver.core.exceptions.DriverException;
 import com.datastax.driver.core.policies.*;
 
 public class StatementWrapperTest extends CCMBridge.PerClassSingleNodeCluster {
@@ -124,7 +125,7 @@ public class StatementWrapperTest extends CCMBridge.PerClassSingleNodeCluster {
     }
 
     /** A retry policy that counts how many times it has seen the custom wrapper for UNAVAILABLE errors. */
-    static class CustomRetryPolicy implements RetryPolicy {
+    static class CustomRetryPolicy implements ClientFailureAwareRetryPolicy {
         final AtomicInteger customStatementsHandled = new AtomicInteger();
 
         @Override
@@ -150,7 +151,7 @@ public class StatementWrapperTest extends CCMBridge.PerClassSingleNodeCluster {
         }
 
         @Override
-        public RetryDecision onUnexpectedException(Statement statement, ConsistencyLevel cl, Exception e, int nbRetry) {
+        public RetryDecision onUnexpectedException(Statement statement, ConsistencyLevel cl, DriverException e, int nbRetry) {
             return RetryDecision.tryNextHost(null);
         }
 

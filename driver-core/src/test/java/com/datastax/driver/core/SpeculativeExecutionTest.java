@@ -17,6 +17,8 @@ package com.datastax.driver.core;
 
 import java.util.*;
 
+import com.datastax.driver.core.exceptions.DriverException;
+import com.datastax.driver.core.policies.ClientFailureAwareRetryPolicy;
 import com.datastax.driver.core.policies.SpeculativeExecutionPolicy;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -219,7 +221,7 @@ public class SpeculativeExecutionTest {
      * Custom retry policy that retries at ONE on read timeout.
      * This deals with the fact that Scassandra only allows read timeouts with 0 replicas.
      */
-    static class CustomRetryPolicy implements RetryPolicy {
+    static class CustomRetryPolicy implements ClientFailureAwareRetryPolicy {
         @Override
         public RetryDecision onReadTimeout(Statement statement, ConsistencyLevel cl, int requiredResponses, int receivedResponses, boolean dataRetrieved, int nbRetry) {
             if (nbRetry != 0)
@@ -243,7 +245,7 @@ public class SpeculativeExecutionTest {
         }
 
         @Override
-        public RetryDecision onUnexpectedException(Statement statement, ConsistencyLevel cl, Exception e, int nbRetry) {
+        public RetryDecision onUnexpectedException(Statement statement, ConsistencyLevel cl, DriverException e, int nbRetry) {
             return RetryDecision.tryNextHost(null);
         }
     }

@@ -280,10 +280,14 @@ public class Metrics {
         private final Counter retriesOnWriteTimeout = registry.counter("retries-on-write-timeout");
         private final Counter retriesOnReadTimeout = registry.counter("retries-on-read-timeout");
         private final Counter retriesOnUnavailable = registry.counter("retries-on-unavailable");
+        private final Counter retriesOnClientTimeout = registry.counter("retries-on-client-timeout");
+        private final Counter retriesOnUnexpectedException = registry.counter("retries-on-unexpected-exception");
         private final Counter ignores = registry.counter("ignores");
         private final Counter ignoresOnWriteTimeout = registry.counter("ignores-on-write-timeout");
         private final Counter ignoresOnReadTimeout = registry.counter("ignores-on-read-timeout");
         private final Counter ignoresOnUnavailable = registry.counter("ignores-on-unavailable");
+        private final Counter ignoresOnClientTimeout = registry.counter("ignores-on-client-timeout");
+        private final Counter ignoresOnUnexpectedException = registry.counter("ignores-on-unexpected-exception");
 
         private final Counter speculativeExecutions = registry.counter("speculative-executions");
 
@@ -396,6 +400,14 @@ public class Metrics {
             return retriesOnUnavailable;
         }
 
+        public Counter getRetriesOnClientTimeout() {
+            return retriesOnClientTimeout;
+        }
+
+        public Counter getRetriesOnUnexpectedException() {
+            return retriesOnUnexpectedException;
+        }
+
         /**
          * Returns the number of times a request was ignored
          * due to the {@link com.datastax.driver.core.policies.RetryPolicy}, for
@@ -445,6 +457,14 @@ public class Metrics {
          */
         public Counter getIgnoresOnUnavailable() {
             return ignoresOnUnavailable;
+        }
+
+        public Counter getIgnoresOnClientTimeout() {
+            return ignoresOnClientTimeout;
+        }
+
+        public Counter getIgnoresOnUnexpectedException() {
+            return ignoresOnUnexpectedException;
         }
 
         /**

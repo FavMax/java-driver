@@ -13,26 +13,40 @@
  *   See the License for the specific language governing permissions and
  *   limitations under the License.
  */
-package com.datastax.driver.core;
+package com.datastax.driver.core.exceptions;
 
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 
-class ConnectionException extends Exception {
+public class ConnectionException extends DriverException implements CoordinatorException {
 
     private static final long serialVersionUID = 0;
 
     public final InetSocketAddress address;
 
-    public ConnectionException(InetSocketAddress address, String msg, Throwable cause)
-    {
+    public ConnectionException(InetSocketAddress address, String msg, Throwable cause) {
         super(msg, cause);
         this.address = address;
     }
 
-    public ConnectionException(InetSocketAddress address, String msg)
-    {
+    public ConnectionException(InetSocketAddress address, String msg) {
         super(msg);
         this.address = address;
+    }
+
+    @Override
+    public InetAddress getHost() {
+        return address.getAddress();
+    }
+
+    @Override
+    public InetSocketAddress getAddress() {
+        return address;
+    }
+
+    @Override
+    public DriverException copy() {
+        return new ConnectionException(address, getMessage(), this);
     }
 
     @Override

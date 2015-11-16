@@ -13,7 +13,7 @@
  *   See the License for the specific language governing permissions and
  *   limitations under the License.
  */
-package com.datastax.driver.core;
+package com.datastax.driver.core.exceptions;
 
 import java.net.InetSocketAddress;
 
@@ -21,17 +21,14 @@ import java.net.InetSocketAddress;
  * A connection exception that has to do with the transport itself, i.e. that
  * suggests the node is down.
  */
-class TransportException extends ConnectionException
-{
+public class TransportException extends ConnectionException {
     private static final long serialVersionUID = 0;
 
-    public TransportException(InetSocketAddress address, String msg, Throwable cause)
-    {
+    public TransportException(InetSocketAddress address, String msg, Throwable cause) {
         super(address, msg, cause);
     }
 
-    public TransportException(InetSocketAddress address, String msg)
-    {
+    public TransportException(InetSocketAddress address, String msg) {
         super(address, msg);
     }
 }
