@@ -135,4 +135,44 @@ public class DefaultRetryPolicy implements RetryPolicy {
             ? RetryDecision.tryNextHost(cl)
             : RetryDecision.rethrow();
     }
+
+    /**
+     * Defines whether to retry and at which consistency level on a
+     * client timeout.
+     * <p>
+     * This implementation triggers a retry on the next host in the query plan,
+     * regardless of the consistency level or the number of retries.
+     *
+     * @param statement the original query for which the consistency level cannot
+     * be achieved.
+     * @param cl the original consistency level for the operation.
+     * @param nbRetry the number of retry already performed for this operation.
+     * @return the retry decision. If {@code RetryDecision.RETHROW} is returned,
+     * an {@link com.datastax.driver.core.OperationTimedOutException} will
+     * be thrown for the operation.
+     */
+    @Override
+    public RetryDecision onClientTimeout(Statement statement, ConsistencyLevel cl, int nbRetry) {
+        return RetryDecision.tryNextHost(cl);
+    }
+
+    /**
+     * Defines whether to retry and at which consistency level on an
+     * unexpected timeout.
+     * <p>
+     * This implementation triggers a retry on the next host in the query plan,
+     * regardless of the consistency level, the exception type or the number of retries.
+     *
+     * @param statement the original query for which the consistency level cannot
+     * be achieved.
+     * @param cl the original consistency level for the operation.
+     * @param nbRetry the number of retry already performed for this operation.
+     * @return the retry decision. If {@code RetryDecision.RETHROW} is returned,
+     * the exception passed to this method will
+     * be rethrown for the operation.
+     */
+    @Override
+    public RetryDecision onUnexpectedException(Statement statement, ConsistencyLevel cl, Exception e, int nbRetry) {
+        return RetryDecision.tryNextHost(cl);
+    }
 }

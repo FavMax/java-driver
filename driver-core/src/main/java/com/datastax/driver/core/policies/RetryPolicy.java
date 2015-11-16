@@ -192,4 +192,33 @@ public interface RetryPolicy {
      * be thrown for the operation.
      */
     public RetryDecision onUnavailable(Statement statement, ConsistencyLevel cl, int requiredReplica, int aliveReplica, int nbRetry);
+
+    /**
+     * Defines whether to retry and at which consistency level on a
+     * client timeout.
+     *
+     * @param statement the original query for which the consistency level cannot
+     * be achieved.
+     * @param cl the original consistency level for the operation.
+     * @param nbRetry the number of retry already performed for this operation.
+     * @return the retry decision. If {@code RetryDecision.RETHROW} is returned,
+     * an {@link com.datastax.driver.core.OperationTimedOutException} will
+     * be thrown for the operation.
+     */
+    RetryDecision onClientTimeout(Statement statement, ConsistencyLevel cl, int nbRetry);
+
+    /**
+     * Defines whether to retry and at which consistency level on an
+     * unexpected exception.
+     *
+     * @param statement the original query for which the consistency level cannot
+     * be achieved.
+     * @param cl the original consistency level for the operation.
+     * @param nbRetry the number of retry already performed for this operation.
+     * @return the retry decision. If {@code RetryDecision.RETHROW} is returned,
+     * the exception passed to this method will
+     * be rethrown for the operation.
+     */
+    RetryDecision onUnexpectedException(Statement statement, ConsistencyLevel cl, Exception e, int nbRetry);
+
 }

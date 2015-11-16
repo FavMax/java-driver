@@ -87,5 +87,15 @@ public class CustomRetryPolicyIntegrationTest extends AbstractRetryPolicyIntegra
                 ? RetryDecision.retry(cl)
                 : RetryDecision.rethrow();
         }
+
+        @Override
+        public RetryDecision onClientTimeout(Statement statement, ConsistencyLevel cl, int nbRetry) {
+            return RetryDecision.tryNextHost(null);
+        }
+
+        @Override
+        public RetryDecision onUnexpectedException(Statement statement, ConsistencyLevel cl, Exception e, int nbRetry) {
+            return RetryDecision.tryNextHost(null);
+        }
     }
 }

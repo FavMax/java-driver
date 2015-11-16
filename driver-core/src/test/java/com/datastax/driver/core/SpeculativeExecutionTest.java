@@ -236,6 +236,16 @@ public class SpeculativeExecutionTest {
         public RetryDecision onUnavailable(Statement statement, ConsistencyLevel cl, int requiredReplica, int aliveReplica, int nbRetry) {
             return RetryDecision.rethrow();
         }
+
+        @Override
+        public RetryDecision onClientTimeout(Statement statement, ConsistencyLevel cl, int nbRetry) {
+            return RetryDecision.tryNextHost(null);
+        }
+
+        @Override
+        public RetryDecision onUnexpectedException(Statement statement, ConsistencyLevel cl, Exception e, int nbRetry) {
+            return RetryDecision.tryNextHost(null);
+        }
     }
 
     private static List<Map<String, ?>> row(String key, String value) {

@@ -143,5 +143,16 @@ public class StatementWrapperTest extends CCMBridge.PerClassSingleNodeCluster {
         public RetryDecision onWriteTimeout(Statement statement, ConsistencyLevel cl, WriteType writeType, int requiredAcks, int receivedAcks, int nbRetry) {
             return RetryDecision.rethrow();
         }
+
+        @Override
+        public RetryDecision onClientTimeout(Statement statement, ConsistencyLevel cl, int nbRetry) {
+            return RetryDecision.tryNextHost(null);
+        }
+
+        @Override
+        public RetryDecision onUnexpectedException(Statement statement, ConsistencyLevel cl, Exception e, int nbRetry) {
+            return RetryDecision.tryNextHost(null);
+        }
+
     }
 }

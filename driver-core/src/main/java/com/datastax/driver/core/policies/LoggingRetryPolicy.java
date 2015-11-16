@@ -95,4 +95,33 @@ public class LoggingRetryPolicy implements RetryPolicy {
         }
         return decision;
     }
+
+    @Override
+    public RetryDecision onClientTimeout(Statement statement, ConsistencyLevel cl, int nbRetry) {
+        RetryDecision decision = policy.onClientTimeout(statement, cl, nbRetry);
+        switch (decision.getType()) {
+            case IGNORE:
+                logger.info(String.format("Ignoring client timeout (initial consistency: %s, retries: %d)", cl, nbRetry));
+                break;
+            case RETRY:
+                logger.info(String.format("Retrying on client timeout at consistency %s (initial consistency: %s, retries: %d)", cl(cl, decision), cl, nbRetry));
+                break;
+        }
+        return decision;
+    }
+
+    @Override
+    public RetryDecision onUnexpectedException(Statement statement, ConsistencyLevel cl, Exception e, int nbRetry) {
+        RetryDecision decision = policy.onUnexpectedException(statement, cl, e, nbRetry);
+        switch (decision.getType()) {
+            case IGNORE:
+                logger.info(String.format("Ignoring unexpected exception (initial consistency: %s, retries: %d)", cl, nbRetry), e);
+                break;
+            case RETRY:
+                logger.info(String.format("Retrying on unavailable exception at consistency %s (initial consistency: %s, retries: %d)", cl(cl, decision), cl, nbRetry), e);
+                break;
+        }
+        return decision;
+    }
+
 }

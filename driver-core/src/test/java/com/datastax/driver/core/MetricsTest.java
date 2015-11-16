@@ -46,6 +46,16 @@ public class MetricsTest extends CCMBridge.PerClassSingleNodeCluster {
             public RetryDecision onUnavailable(Statement statement, ConsistencyLevel cl, int requiredReplica, int aliveReplica, int nbRetry) {
                 return retryDecision;
             }
+
+            @Override
+            public RetryDecision onClientTimeout(Statement statement, ConsistencyLevel cl, int nbRetry) {
+                return retryDecision;
+            }
+
+            @Override
+            public RetryDecision onUnexpectedException(Statement statement, ConsistencyLevel cl, Exception e, int nbRetry) {
+                return retryDecision;
+            }
         });
     }
 
