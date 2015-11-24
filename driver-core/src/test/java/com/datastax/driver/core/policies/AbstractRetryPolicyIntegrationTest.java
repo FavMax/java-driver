@@ -134,7 +134,12 @@ public class AbstractRetryPolicyIntegrationTest {
             any(Statement.class), any(ConsistencyLevel.class), anyInt());
     }
 
-    protected void assertOnUnexpectedExceptionWasCalled(int times, Class<? extends DriverException> exception) {
+    protected void assertOnConnectionErrorWasCalled(int times) {
+        Mockito.verify(retryPolicy, times(times)).onClientTimeout(
+            any(Statement.class), any(ConsistencyLevel.class), anyInt());
+    }
+
+    protected void assertOnUnexpectedErrorWasCalled(int times, Class<? extends DriverException> exception) {
         Mockito.verify(retryPolicy, times(times)).onUnexpectedError(
             any(Statement.class), any(ConsistencyLevel.class), any(exception), anyInt());
     }

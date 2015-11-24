@@ -15,79 +15,120 @@
  */
 package com.datastax.driver.core.policies;
 
+import org.assertj.core.api.Fail;
+import org.scassandra.http.client.PrimingRequest;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.fail;
-import static org.scassandra.http.client.PrimingRequest.Result.read_request_timeout;
-import static org.scassandra.http.client.PrimingRequest.Result.unavailable;
+import static org.scassandra.http.client.PrimingRequest.Result.is_bootstrapping;
+import static org.scassandra.http.client.PrimingRequest.Result.overloaded;
+import static org.scassandra.http.client.PrimingRequest.Result.server_error;
+import static org.scassandra.http.client.PrimingRequest.Result.write_request_timeout;
 
-import com.datastax.driver.core.ConsistencyLevel;
-import com.datastax.driver.core.ResultSet;
-import com.datastax.driver.core.Statement;
-import com.datastax.driver.core.WriteType;
-import com.datastax.driver.core.exceptions.ConnectionException;
-import com.datastax.driver.core.exceptions.DriverException;
-import com.datastax.driver.core.exceptions.UnavailableException;
+import com.datastax.driver.core.*;
+import com.datastax.driver.core.exceptions.*;
 
 /**
- * Integration test with a custom implementation, to test retry and ignore decisions.
+ * Integration test with a IdempotenceAwareRetryPolicy.
  */
 public class IdempotenceAwareRetryPolicyIntegrationTest extends AbstractRetryPolicyIntegrationTest {
     public IdempotenceAwareRetryPolicyIntegrationTest() {
-        super(new CustomRetryPolicy());
+        super(new IdempotenceAwareRetryPolicy(new CustomRetryPolicy(), new QueryOptions().setDefaultIdempotence(false)));
     }
 
     @Test(groups = "short")
-    public void should_ignore_read_timeout() {
-        simulateError(1, read_request_timeout);
+    public void should_not_retry_on_write_timeout_if_statement_non_idempotent() {
+        simulateError(1, write_request_timeout);
 
-        ResultSet rs = query();
-        assertThat(rs.iterator().hasNext()).isFalse(); // ignore decisions produce empty result sets
+        try {
+            query();
+            fail("expected an WriteTimeoutException");
+        } catch (WriteTimeoutException e) {/* expected */}
 
-        assertOnReadTimeoutWasCalled(1);
-        assertThat(errors.getRetriesOnReadTimeout().getCount()).isEqualTo(0);
+        assertOnWriteTimeoutWasCalled(1);
+        assertThat(errors.getWriteTimeouts().getCount()).isEqualTo(1);
+        assertThat(errors.getRetries().getCount()).isEqualTo(0);
+        assertThat(errors.getRetriesOnWriteTimeout().getCount()).isEqualTo(0);
         assertQueried(1, 1);
         assertQueried(2, 0);
         assertQueried(3, 0);
     }
 
     @Test(groups = "short")
-    public void should_retry_once_on_same_host_on_unavailable() {
-        simulateError(1, unavailable);
+    public void should_not_retry_on_client_timeout_if_statement_non_idempotent() {
+        cluster.getConfiguration().getSocketOptions().setReadTimeoutMillis(1);
+        try {
+            scassandras
+                .prime(1, PrimingRequest.queryBuilder()
+                    .withQuery("mock query")
+                    .withFixedDelay(1000)
+                    .withRows(row("result", "result1"))
+                    .build());
+            try {
+                query();
+                Fail.fail("expected a NoHostAvailableException");
+            } catch (OperationTimedOutException e) {/* expected */}
+
+            assertOnClientTimeoutWasCalled(1);
+            assertThat(errors.getClientTimeouts().getCount()).isEqualTo(1);
+            assertThat(errors.getRetries().getCount()).isEqualTo(0);
+            assertThat(errors.getRetriesOnClientTimeout().getCount()).isEqualTo(0);
+            assertQueried(1, 1);
+            assertQueried(2, 0);
+            assertQueried(3, 0);
+        } finally {
+            cluster.getConfiguration().getSocketOptions().setReadTimeoutMillis(SocketOptions.DEFAULT_READ_TIMEOUT_MILLIS);
+        }
+    }
+
+    @DataProvider
+    public static Object[][] unexpectedErrors() {
+        return new Object[][]{
+            {server_error, ServerError.class},
+            {overloaded, BootstrappingException.class},
+            {is_bootstrapping, BootstrappingException.class}
+        };
+    }
+
+    @Test(groups = "short", dataProvider = "unexpectedErrors")
+    public void should_not_retry_on_unexpected_exception_if_statement_non_idempotent(PrimingRequest.Result error, Class<? extends DriverException> exception) {
+        simulateError(1, error);
 
         try {
             query();
-            fail("expected an UnavailableException");
-        } catch (UnavailableException e) {/*expected*/}
+            Fail.fail("expected " + error);
+        } catch (DriverInternalError e) {/*expected*/}
 
-        assertOnUnavailableWasCalled(2);
-        assertThat(errors.getRetriesOnUnavailable().getCount()).isEqualTo(1);
-        assertQueried(1, 2);
+        assertOnUnexpectedErrorWasCalled(1, exception);
+        assertThat(errors.getOthers().getCount()).isEqualTo(1);
+        assertThat(errors.getRetries().getCount()).isEqualTo(0);
+        assertThat(errors.getRetriesOnUnexpectedError().getCount()).isEqualTo(0);
+        assertQueried(1, 1);
         assertQueried(2, 0);
         assertQueried(3, 0);
     }
 
+
     /**
-     * Ignores read and write timeouts, and retries at most once on unavailable.
+     * Retries everything, but since all statements are non idempotent, nothing should actually be retried.
      */
     static class CustomRetryPolicy implements ExtendedRetryPolicy {
 
         @Override
         public RetryDecision onReadTimeout(Statement statement, ConsistencyLevel cl, int requiredResponses, int receivedResponses, boolean dataRetrieved, int nbRetry) {
-            return RetryDecision.ignore();
+            return RetryDecision.retry(cl);
         }
 
         @Override
         public RetryDecision onWriteTimeout(Statement statement, ConsistencyLevel cl, WriteType writeType, int requiredAcks, int receivedAcks, int nbRetry) {
-            return RetryDecision.ignore();
+            return RetryDecision.retry(cl);
         }
 
         @Override
         public RetryDecision onUnavailable(Statement statement, ConsistencyLevel cl, int requiredReplica, int aliveReplica, int nbRetry) {
-            return (nbRetry == 0)
-                ? RetryDecision.retry(cl)
-                : RetryDecision.rethrow();
+            return RetryDecision.retry(cl);
         }
 
         @Override

@@ -15,12 +15,13 @@
  */
 package com.datastax.driver.core.policies;
 
+import java.util.concurrent.TimeUnit;
+
 import org.scassandra.http.client.PrimingRequest;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.fail;
+import static org.assertj.core.api.Fail.fail;
 import static org.scassandra.http.client.PrimingRequest.Result.is_bootstrapping;
 import static org.scassandra.http.client.PrimingRequest.Result.overloaded;
 import static org.scassandra.http.client.PrimingRequest.Result.read_request_timeout;
@@ -29,6 +30,8 @@ import static org.scassandra.http.client.PrimingRequest.Result.unavailable;
 
 import com.datastax.driver.core.*;
 import com.datastax.driver.core.exceptions.*;
+
+import static com.datastax.driver.core.Assertions.assertThat;
 
 /**
  * Integration test with a custom implementation, to test retry and ignore decisions.
@@ -76,39 +79,43 @@ public class CustomRetryPolicyIntegrationTest extends AbstractRetryPolicyIntegra
     @Test(groups = "short")
     public void should_try_next_host_on_client_timeouts() {
         cluster.getConfiguration().getSocketOptions().setReadTimeoutMillis(1);
-        scassandras
-            .prime(1, PrimingRequest.queryBuilder()
-                .withQuery("mock query")
-                .withFixedDelay(1000)
-                .withRows(row("result", "result1"))
-                .build())
-            .prime(2, PrimingRequest.queryBuilder()
-                .withQuery("mock query")
-                .withFixedDelay(1000)
-                .withRows(row("result", "result2"))
-                .build())
-            .prime(3, PrimingRequest.queryBuilder()
-                .withQuery("mock query")
-                .withFixedDelay(1000)
-                .withRows(row("result", "result3"))
-                .build());
         try {
-            query();
-            fail("expected a NoHostAvailableException");
-        } catch (NoHostAvailableException e) {
-            assertThat(e.getErrors().keySet()).hasSize(3).containsExactly(
-                host1.getSocketAddress(),
-                host2.getSocketAddress(),
-                host3.getSocketAddress());
-            assertThat(e.getErrors().values()).hasOnlyElementsOfType(OperationTimedOutException.class);
+            scassandras
+                .prime(1, PrimingRequest.queryBuilder()
+                    .withQuery("mock query")
+                    .withFixedDelay(1000)
+                    .withRows(row("result", "result1"))
+                    .build())
+                .prime(2, PrimingRequest.queryBuilder()
+                    .withQuery("mock query")
+                    .withFixedDelay(1000)
+                    .withRows(row("result", "result2"))
+                    .build())
+                .prime(3, PrimingRequest.queryBuilder()
+                    .withQuery("mock query")
+                    .withFixedDelay(1000)
+                    .withRows(row("result", "result3"))
+                    .build());
+            try {
+                query();
+                fail("expected a NoHostAvailableException");
+            } catch (NoHostAvailableException e) {
+                assertThat(e.getErrors().keySet()).hasSize(3).containsExactly(
+                    host1.getSocketAddress(),
+                    host2.getSocketAddress(),
+                    host3.getSocketAddress());
+                assertThat(e.getErrors().values()).hasOnlyElementsOfType(OperationTimedOutException.class);
+            }
+            assertOnClientTimeoutWasCalled(3);
+            assertThat(errors.getRetries().getCount()).isEqualTo(3);
+            assertThat(errors.getClientTimeouts().getCount()).isEqualTo(3);
+            assertThat(errors.getRetriesOnClientTimeout().getCount()).isEqualTo(3);
+            assertQueried(1, 1);
+            assertQueried(2, 1);
+            assertQueried(3, 1);
+        } finally {
+            cluster.getConfiguration().getSocketOptions().setReadTimeoutMillis(SocketOptions.DEFAULT_READ_TIMEOUT_MILLIS);
         }
-        assertOnClientTimeoutWasCalled(3);
-        assertThat(errors.getRetries().getCount()).isEqualTo(3);
-        assertThat(errors.getClientTimeouts().getCount()).isEqualTo(3);
-        assertThat(errors.getRetriesOnClientTimeout().getCount()).isEqualTo(3);
-        assertQueried(1, 1);
-        assertQueried(2, 1);
-        assertQueried(3, 1);
     }
 
     @DataProvider
@@ -121,7 +128,7 @@ public class CustomRetryPolicyIntegrationTest extends AbstractRetryPolicyIntegra
     }
 
     @Test(groups = "short", dataProvider = "unexpectedErrors")
-    public void should_rethrow_unexpected_exception(PrimingRequest.Result error, Class<? extends DriverException> exception) {
+    public void should_rethrow_unexpected_error(PrimingRequest.Result error, Class<? extends DriverException> exception) {
         simulateError(1, error);
 
         try {
@@ -129,8 +136,10 @@ public class CustomRetryPolicyIntegrationTest extends AbstractRetryPolicyIntegra
             fail("expected " + error);
         } catch (DriverInternalError e) {/*expected*/}
 
-        assertOnUnexpectedExceptionWasCalled(1, exception);
+        assertOnUnexpectedErrorWasCalled(1, exception);
         assertThat(errors.getOthers().getCount()).isEqualTo(1);
+        assertThat(errors.getRetries().getCount()).isEqualTo(0);
+        assertThat(errors.getRetriesOnUnexpectedError().getCount()).isEqualTo(0);
         assertQueried(1, 1);
         assertQueried(2, 0);
         assertQueried(3, 0);
