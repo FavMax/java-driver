@@ -26,6 +26,7 @@ import com.datastax.driver.core.ConsistencyLevel;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Statement;
 import com.datastax.driver.core.WriteType;
+import com.datastax.driver.core.exceptions.ConnectionException;
 import com.datastax.driver.core.exceptions.DriverException;
 import com.datastax.driver.core.exceptions.UnavailableException;
 
@@ -70,7 +71,7 @@ public class IdempotenceAwareRetryPolicyIntegrationTest extends AbstractRetryPol
     /**
      * Ignores read and write timeouts, and retries at most once on unavailable.
      */
-    static class CustomRetryPolicy implements ClientFailureAwareRetryPolicy {
+    static class CustomRetryPolicy implements ExtendedRetryPolicy {
 
         @Override
         public RetryDecision onReadTimeout(Statement statement, ConsistencyLevel cl, int requiredResponses, int receivedResponses, boolean dataRetrieved, int nbRetry) {
@@ -91,12 +92,17 @@ public class IdempotenceAwareRetryPolicyIntegrationTest extends AbstractRetryPol
 
         @Override
         public RetryDecision onClientTimeout(Statement statement, ConsistencyLevel cl, int nbRetry) {
-            return RetryDecision.tryNextHost(null);
+            return RetryDecision.tryNextHost(cl);
         }
 
         @Override
-        public RetryDecision onUnexpectedException(Statement statement, ConsistencyLevel cl, DriverException e, int nbRetry) {
-            return RetryDecision.tryNextHost(null);
+        public RetryDecision onConnectionError(Statement statement, ConsistencyLevel cl, ConnectionException e, int nbRetry) {
+            return RetryDecision.tryNextHost(cl);
+        }
+
+        @Override
+        public RetryDecision onUnexpectedError(Statement statement, ConsistencyLevel cl, DriverException e, int nbRetry) {
+            return RetryDecision.tryNextHost(cl);
         }
     }
 }

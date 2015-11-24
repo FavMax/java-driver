@@ -22,6 +22,7 @@ import java.net.InetSocketAddress;
  * suggests the node is down.
  */
 public class TransportException extends ConnectionException {
+
     private static final long serialVersionUID = 0;
 
     public TransportException(InetSocketAddress address, String msg, Throwable cause) {
@@ -31,4 +32,10 @@ public class TransportException extends ConnectionException {
     public TransportException(InetSocketAddress address, String msg) {
         super(address, msg);
     }
+
+    @Override
+    public TransportException copy() {
+        return new TransportException(address, getMessage(), getCause());
+    }
+
 }

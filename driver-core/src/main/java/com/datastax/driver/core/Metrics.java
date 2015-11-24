@@ -273,6 +273,7 @@ public class Metrics {
         private final Counter writeTimeouts = registry.counter("write-timeouts");
         private final Counter readTimeouts = registry.counter("read-timeouts");
         private final Counter unavailables = registry.counter("unavailables");
+        private final Counter clientTimeouts = registry.counter("client-timeouts");
 
         private final Counter otherErrors = registry.counter("other-errors");
 
@@ -281,13 +282,15 @@ public class Metrics {
         private final Counter retriesOnReadTimeout = registry.counter("retries-on-read-timeout");
         private final Counter retriesOnUnavailable = registry.counter("retries-on-unavailable");
         private final Counter retriesOnClientTimeout = registry.counter("retries-on-client-timeout");
-        private final Counter retriesOnUnexpectedException = registry.counter("retries-on-unexpected-exception");
+        private final Counter retriesOnConnectionError = registry.counter("retries-on-connection-error");
+        private final Counter retriesOnUnexpectedError = registry.counter("retries-on-unexpected-error");
         private final Counter ignores = registry.counter("ignores");
         private final Counter ignoresOnWriteTimeout = registry.counter("ignores-on-write-timeout");
         private final Counter ignoresOnReadTimeout = registry.counter("ignores-on-read-timeout");
         private final Counter ignoresOnUnavailable = registry.counter("ignores-on-unavailable");
         private final Counter ignoresOnClientTimeout = registry.counter("ignores-on-client-timeout");
-        private final Counter ignoresOnUnexpectedException = registry.counter("ignores-on-unexpected-exception");
+        private final Counter ignoresOnConnectionError = registry.counter("ignores-on-connection-error");
+        private final Counter ignoresOnUnexpectedError = registry.counter("ignores-on-unexpected-error");
 
         private final Counter speculativeExecutions = registry.counter("speculative-executions");
 
@@ -337,6 +340,10 @@ public class Metrics {
          */
         public Counter getUnavailables() {
             return unavailables;
+        }
+
+        public Counter getClientTimeouts() {
+            return clientTimeouts;
         }
 
         /**
@@ -404,8 +411,12 @@ public class Metrics {
             return retriesOnClientTimeout;
         }
 
-        public Counter getRetriesOnUnexpectedException() {
-            return retriesOnUnexpectedException;
+        public Counter getRetriesOnConnectionError() {
+            return retriesOnConnectionError;
+        }
+
+        public Counter getRetriesOnUnexpectedError() {
+            return retriesOnUnexpectedError;
         }
 
         /**
@@ -463,10 +474,13 @@ public class Metrics {
             return ignoresOnClientTimeout;
         }
 
-        public Counter getIgnoresOnUnexpectedException() {
-            return ignoresOnUnexpectedException;
+        public Counter getIgnoresOnConnectionError() {
+            return ignoresOnConnectionError;
         }
 
+        public Counter getIgnoresOnUnexpectedError() {
+            return ignoresOnUnexpectedError;
+        }
         /**
          * Returns the number of times a speculative execution was started
          * because a previous execution did not complete within the delay

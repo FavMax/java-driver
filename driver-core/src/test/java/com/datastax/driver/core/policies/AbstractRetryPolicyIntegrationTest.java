@@ -53,9 +53,9 @@ public class AbstractRetryPolicyIntegrationTest {
     protected Host host1, host2, host3;
     protected Session session;
 
-    protected ClientFailureAwareRetryPolicy retryPolicy;
+    protected ExtendedRetryPolicy retryPolicy;
 
-    protected AbstractRetryPolicyIntegrationTest(ClientFailureAwareRetryPolicy retryPolicy) {
+    protected AbstractRetryPolicyIntegrationTest(ExtendedRetryPolicy retryPolicy) {
         this.retryPolicy = Mockito.spy(retryPolicy);
     }
 
@@ -134,9 +134,9 @@ public class AbstractRetryPolicyIntegrationTest {
             any(Statement.class), any(ConsistencyLevel.class), anyInt());
     }
 
-    protected void assertOnUnexpectedExceptionWasCalled(int times) {
-        Mockito.verify(retryPolicy, times(times)).onUnexpectedException(
-            any(Statement.class), any(ConsistencyLevel.class), any(DriverException.class), anyInt());
+    protected void assertOnUnexpectedExceptionWasCalled(int times, Class<? extends DriverException> exception) {
+        Mockito.verify(retryPolicy, times(times)).onUnexpectedError(
+            any(Statement.class), any(ConsistencyLevel.class), any(exception), anyInt());
     }
 
     protected void assertQueried(int hostNumber, int times) {

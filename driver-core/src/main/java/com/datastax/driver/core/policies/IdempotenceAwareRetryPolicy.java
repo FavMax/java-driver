@@ -19,14 +19,15 @@ import com.datastax.driver.core.ConsistencyLevel;
 import com.datastax.driver.core.QueryOptions;
 import com.datastax.driver.core.Statement;
 import com.datastax.driver.core.WriteType;
+import com.datastax.driver.core.exceptions.ConnectionException;
 import com.datastax.driver.core.exceptions.DriverException;
 
 /**
  * A retry policy that avoids retrying non-idempotent statements.
  */
-public class IdempotenceAwareRetryPolicy implements ClientFailureAwareRetryPolicy {
+public class IdempotenceAwareRetryPolicy implements ExtendedRetryPolicy {
 
-    private final ClientFailureAwareRetryPolicy childPolicy;
+    private final ExtendedRetryPolicy childPolicy;
 
     private final QueryOptions queryOptions;
 
@@ -41,7 +42,7 @@ public class IdempotenceAwareRetryPolicy implements ClientFailureAwareRetryPolic
      * @param childPolicy the policy to wrap.
      * @param queryOptions the cluster's {@link QueryOptions} object.
      */
-    public IdempotenceAwareRetryPolicy(ClientFailureAwareRetryPolicy childPolicy, QueryOptions queryOptions) {
+    public IdempotenceAwareRetryPolicy(ExtendedRetryPolicy childPolicy, QueryOptions queryOptions) {
         this.childPolicy = childPolicy;
         this.queryOptions = queryOptions;
     }
@@ -73,9 +74,17 @@ public class IdempotenceAwareRetryPolicy implements ClientFailureAwareRetryPolic
     }
 
     @Override
-    public RetryDecision onUnexpectedException(Statement statement, ConsistencyLevel cl, DriverException e, int nbRetry) {
+    public RetryDecision onConnectionError(Statement statement, ConsistencyLevel cl, ConnectionException e, int nbRetry) {
         if(isIdempotent(statement))
-            return childPolicy.onUnexpectedException(statement, cl, e, nbRetry);
+            return childPolicy.onClientTimeout(statement, cl, nbRetry);
+        else
+            return RetryDecision.rethrow();
+    }
+
+    @Override
+    public RetryDecision onUnexpectedError(Statement statement, ConsistencyLevel cl, DriverException e, int nbRetry) {
+        if(isIdempotent(statement))
+            return childPolicy.onUnexpectedError(statement, cl, e, nbRetry);
         else
             return RetryDecision.rethrow();
     }

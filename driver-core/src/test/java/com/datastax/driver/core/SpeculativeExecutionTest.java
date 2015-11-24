@@ -15,23 +15,25 @@
  */
 package com.datastax.driver.core;
 
-import java.util.*;
+import java.util.List;
+import java.util.Map;
 
-import com.datastax.driver.core.exceptions.DriverException;
-import com.datastax.driver.core.policies.ClientFailureAwareRetryPolicy;
-import com.datastax.driver.core.policies.SpeculativeExecutionPolicy;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import org.scassandra.http.client.PrimingRequest;
 import org.testng.annotations.*;
 
-import com.datastax.driver.core.policies.ConstantSpeculativeExecutionPolicy;
-import com.datastax.driver.core.policies.RetryPolicy;
-
-import static com.datastax.driver.core.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+
+import com.datastax.driver.core.exceptions.ConnectionException;
+import com.datastax.driver.core.exceptions.DriverException;
+import com.datastax.driver.core.policies.ConstantSpeculativeExecutionPolicy;
+import com.datastax.driver.core.policies.ExtendedRetryPolicy;
+import com.datastax.driver.core.policies.SpeculativeExecutionPolicy;
+
+import static com.datastax.driver.core.Assertions.assertThat;
 
 public class SpeculativeExecutionTest {
     SCassandraCluster scassandras;
@@ -221,7 +223,7 @@ public class SpeculativeExecutionTest {
      * Custom retry policy that retries at ONE on read timeout.
      * This deals with the fact that Scassandra only allows read timeouts with 0 replicas.
      */
-    static class CustomRetryPolicy implements ClientFailureAwareRetryPolicy {
+    static class CustomRetryPolicy implements ExtendedRetryPolicy {
         @Override
         public RetryDecision onReadTimeout(Statement statement, ConsistencyLevel cl, int requiredResponses, int receivedResponses, boolean dataRetrieved, int nbRetry) {
             if (nbRetry != 0)
@@ -241,12 +243,17 @@ public class SpeculativeExecutionTest {
 
         @Override
         public RetryDecision onClientTimeout(Statement statement, ConsistencyLevel cl, int nbRetry) {
-            return RetryDecision.tryNextHost(null);
+            return RetryDecision.tryNextHost(cl);
         }
 
         @Override
-        public RetryDecision onUnexpectedException(Statement statement, ConsistencyLevel cl, DriverException e, int nbRetry) {
-            return RetryDecision.tryNextHost(null);
+        public RetryDecision onConnectionError(Statement statement, ConsistencyLevel cl, ConnectionException e, int nbRetry) {
+            return RetryDecision.tryNextHost(cl);
+        }
+
+        @Override
+        public RetryDecision onUnexpectedError(Statement statement, ConsistencyLevel cl, DriverException e, int nbRetry) {
+            return RetryDecision.tryNextHost(cl);
         }
     }
 

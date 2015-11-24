@@ -13,18 +13,26 @@
  *   See the License for the specific language governing permissions and
  *   limitations under the License.
  */
-package com.datastax.driver.core;
+package com.datastax.driver.core.exceptions;
 
 import java.net.InetSocketAddress;
 
+import com.datastax.driver.core.SocketOptions;
 import com.datastax.driver.core.exceptions.ConnectionException;
 
 /**
  * Thrown on a client-side timeout, i.e. when the client didn't hear back from the server within
  * {@link SocketOptions#getReadTimeoutMillis()}.
  */
-class OperationTimedOutException extends ConnectionException {
+public class OperationTimedOutException extends ConnectionException {
+
     public OperationTimedOutException(InetSocketAddress address) {
         super(address, "Operation timed out");
     }
+
+    @Override
+    public OperationTimedOutException copy() {
+        return new OperationTimedOutException(address);
+    }
+
 }

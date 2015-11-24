@@ -33,7 +33,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.datastax.driver.core.exceptions.*;
-import com.datastax.driver.core.policies.ClientFailureAwareRetryPolicy;
+import com.datastax.driver.core.policies.ExtendedRetryPolicy;
 import com.datastax.driver.core.policies.RetryPolicy;
 import com.datastax.driver.core.policies.RetryPolicy.RetryDecision.Type;
 import com.datastax.driver.core.policies.SpeculativeExecutionPolicy.SpeculativeExecutionPlan;
@@ -150,11 +150,6 @@ class RequestHandler {
             execution.cancel();
     }
 
-    private void logError(InetSocketAddress address, Throwable exception) {
-        logger.debug("Error querying {} : {}", address, exception.toString());
-        errors.put(address, exception);
-    }
-
     private void setFinalResult(SpeculativeExecution execution, Connection connection, Message.Response response) {
         if (!isDone.compareAndSet(false, true)) {
             if(logger.isTraceEnabled())
@@ -252,9 +247,10 @@ class RequestHandler {
         private final AtomicBoolean nextExecutionScheduled = new AtomicBoolean();
 
         // This represents the number of times a retry has been triggered by the RetryPolicy (this is different from
-        // queryStateRef.get().retryCount, because some retries don't involve the policy, for example after a
-        // PREPARED response).
-        private final AtomicInteger retriesByPolicy = new AtomicInteger(0);
+        // queryStateRef.get().retryCount, because some retries don't involve the policy, for example after an
+        // UNPREPARED response).
+        // This is incremented by one writer at a time, so volatile is good enough.
+        private volatile int retriesByPolicy;
 
         private volatile Connection.ResponseHandler connectionHandler;
 
@@ -361,7 +357,7 @@ class RequestHandler {
         private void processRetryDecision(RetryPolicy.RetryDecision retryDecision, Connection connection, Exception exceptionToReport) {
             switch (retryDecision.getType()) {
                 case RETRY:
-                    retriesByPolicy.incrementAndGet();
+                    retriesByPolicy++;
                     if (logger.isDebugEnabled())
                         logger.debug("[{}] Doing retry {} for query {} at consistency {}", id, retriesByPolicy, statement, retryDecision.getRetryConsistencyLevel());
                     if (metricsEnabled())
@@ -403,6 +399,11 @@ class RequestHandler {
                     }
                 }
             });
+        }
+
+        private void logError(InetSocketAddress address, Throwable exception) {
+            logger.debug("[{}] Error querying {} : {}", id, address, exception.toString());
+            errors.put(address, exception);
         }
 
         void cancel() {
@@ -463,18 +464,15 @@ class RequestHandler {
                             case READ_TIMEOUT:
                                 connection.release();
                                 assert err.infos instanceof ReadTimeoutException;
-                                if (metricsEnabled())
-                                    metrics().getErrorMetrics().getReadTimeouts().inc();
-
                                 ReadTimeoutException rte = (ReadTimeoutException)err.infos;
                                 retry = retryPolicy.onReadTimeout(statement,
                                     rte.getConsistencyLevel(),
                                     rte.getRequiredAcknowledgements(),
                                     rte.getReceivedAcknowledgements(),
                                     rte.wasDataRetrieved(),
-                                    retriesByPolicy.get());
-
+                                    retriesByPolicy);
                                 if (metricsEnabled()) {
+                                    metrics().getErrorMetrics().getReadTimeouts().inc();
                                     if (retry.getType() == Type.RETRY)
                                         metrics().getErrorMetrics().getRetriesOnReadTimeout().inc();
                                     if (retry.getType() == Type.IGNORE)
@@ -484,18 +482,15 @@ class RequestHandler {
                             case WRITE_TIMEOUT:
                                 connection.release();
                                 assert err.infos instanceof WriteTimeoutException;
-                                if (metricsEnabled())
-                                    metrics().getErrorMetrics().getWriteTimeouts().inc();
-
                                 WriteTimeoutException wte = (WriteTimeoutException)err.infos;
                                 retry = retryPolicy.onWriteTimeout(statement,
                                     wte.getConsistencyLevel(),
                                     wte.getWriteType(),
                                     wte.getRequiredAcknowledgements(),
                                     wte.getReceivedAcknowledgements(),
-                                    retriesByPolicy.get());
-
+                                    retriesByPolicy);
                                 if (metricsEnabled()) {
+                                    metrics().getErrorMetrics().getWriteTimeouts().inc();
                                     if (retry.getType() == Type.RETRY)
                                         metrics().getErrorMetrics().getRetriesOnWriteTimeout().inc();
                                     if (retry.getType() == Type.IGNORE)
@@ -505,17 +500,14 @@ class RequestHandler {
                             case UNAVAILABLE:
                                 connection.release();
                                 assert err.infos instanceof UnavailableException;
-                                if (metricsEnabled())
-                                    metrics().getErrorMetrics().getUnavailables().inc();
-
                                 UnavailableException ue = (UnavailableException)err.infos;
                                 retry = retryPolicy.onUnavailable(statement,
                                     ue.getConsistencyLevel(),
                                     ue.getRequiredReplicas(),
                                     ue.getAliveReplicas(),
-                                    retriesByPolicy.get());
-
+                                    retriesByPolicy);
                                 if (metricsEnabled()) {
+                                    metrics().getErrorMetrics().getUnavailables().inc();
                                     if (retry.getType() == Type.RETRY)
                                         metrics().getErrorMetrics().getRetriesOnUnavailable().inc();
                                     if (retry.getType() == Type.IGNORE)
@@ -524,46 +516,59 @@ class RequestHandler {
                                 break;
                             case OVERLOADED:
                                 connection.release();
-                                // Try another node
-                                logger.warn("Host {} is overloaded, trying next host.", connection.address);
-                                if (metricsEnabled())
-                                    metrics().getErrorMetrics().getOthers().inc();
-                                if (retryPolicy instanceof ClientFailureAwareRetryPolicy)
-                                    retry = ((ClientFailureAwareRetryPolicy)retryPolicy).onUnexpectedException(statement,
+                                logger.warn("Host {} is overloaded.", connection.address);
+                                if (retryPolicy instanceof ExtendedRetryPolicy)
+                                    retry = ((ExtendedRetryPolicy)retryPolicy).onUnexpectedError(statement,
                                         request().consistency(),
                                         (DriverException)exceptionToReport,
-                                        retriesByPolicy.get());
+                                        retriesByPolicy);
                                 else
                                     retry = RetryPolicy.RetryDecision.tryNextHost(null);
+                                if (metricsEnabled()) {
+                                    metrics().getErrorMetrics().getOthers().inc();
+                                    if (retry.getType() == Type.RETRY)
+                                        metrics().getErrorMetrics().getRetriesOnUnexpectedError().inc();
+                                    if (retry.getType() == Type.IGNORE)
+                                        metrics().getErrorMetrics().getIgnoresOnUnexpectedError().inc();
+                                }
                                 break;
                             case SERVER_ERROR:
                                 connection.release();
-                                // Defunct connection and try another node
-                                logger.warn("{} replied with server error ({}), trying next host.", connection.address, err.message);
+                                logger.warn("{} replied with server error ({}), defuncting connection.", connection.address, err.message);
+                                // Defunct connection
                                 connection.defunct(exceptionToReport);
-                                if (metricsEnabled())
-                                    metrics().getErrorMetrics().getOthers().inc();
-                                if (retryPolicy instanceof ClientFailureAwareRetryPolicy)
-                                    retry = ((ClientFailureAwareRetryPolicy)retryPolicy).onUnexpectedException(statement,
+                                if (retryPolicy instanceof ExtendedRetryPolicy)
+                                    retry = ((ExtendedRetryPolicy)retryPolicy).onUnexpectedError(statement,
                                         request().consistency(),
                                         (DriverException)exceptionToReport,
-                                        retriesByPolicy.get());
+                                        retriesByPolicy);
                                 else
                                     retry = RetryPolicy.RetryDecision.tryNextHost(null);
+                                if (metricsEnabled()) {
+                                    metrics().getErrorMetrics().getOthers().inc();
+                                    if (retry.getType() == Type.RETRY)
+                                        metrics().getErrorMetrics().getRetriesOnUnexpectedError().inc();
+                                    if (retry.getType() == Type.IGNORE)
+                                        metrics().getErrorMetrics().getIgnoresOnUnexpectedError().inc();
+                                }
                                 break;
                             case IS_BOOTSTRAPPING:
                                 connection.release();
-                                // Try another node
-                                logger.error("Query sent to {} but it is bootstrapping. This shouldn't happen but trying next host.", connection.address);
-                                if (metricsEnabled())
-                                    metrics().getErrorMetrics().getOthers().inc();
-                                if (retryPolicy instanceof ClientFailureAwareRetryPolicy)
-                                    retry = ((ClientFailureAwareRetryPolicy)retryPolicy).onUnexpectedException(statement,
+                                logger.error("Query sent to {} but it is bootstrapping.", connection.address);
+                                if (retryPolicy instanceof ExtendedRetryPolicy)
+                                    retry = ((ExtendedRetryPolicy)retryPolicy).onUnexpectedError(statement,
                                         request().consistency(),
                                         (DriverException)exceptionToReport,
-                                        retriesByPolicy.get());
+                                        retriesByPolicy);
                                 else
                                     retry = RetryPolicy.RetryDecision.tryNextHost(null);
+                                if (metricsEnabled()) {
+                                    metrics().getErrorMetrics().getOthers().inc();
+                                    if (retry.getType() == Type.RETRY)
+                                        metrics().getErrorMetrics().getRetriesOnUnexpectedError().inc();
+                                    if (retry.getType() == Type.IGNORE)
+                                        metrics().getErrorMetrics().getIgnoresOnUnexpectedError().inc();
+                                }
                                 break;
                             case UNPREPARED:
                                 // Do not release connection yet, because we might reuse it to send the PREPARE message (see write() call below)
@@ -661,25 +666,36 @@ class RequestHandler {
                                 retry(true, null);
                             } else {
                                 DriverException driverException = new DriverException("Got unexpected response to prepare message: " + response);
-                                logError(connection.address, driverException);
                                 RetryPolicy.RetryDecision decision;
-                                if (retryPolicy instanceof ClientFailureAwareRetryPolicy)
-                                    decision = ((ClientFailureAwareRetryPolicy)retryPolicy).onUnexpectedException(statement, request().consistency(), driverException, retriesByPolicy.get());
+                                if (retryPolicy instanceof ExtendedRetryPolicy)
+                                    decision = ((ExtendedRetryPolicy)retryPolicy).onUnexpectedError(statement, request().consistency(), driverException, retriesByPolicy);
                                 else
                                     decision = RetryPolicy.RetryDecision.tryNextHost(null);
+                                if (metricsEnabled()) {
+                                    metrics().getErrorMetrics().getOthers().inc();
+                                    if (decision.getType() == Type.RETRY)
+                                        metrics().getErrorMetrics().getRetriesOnUnexpectedError().inc();
+                                    if (decision.getType() == Type.IGNORE)
+                                        metrics().getErrorMetrics().getIgnoresOnUnexpectedError().inc();
+                                }
                                 processRetryDecision(decision, connection, driverException);
                             }
                             break;
                         case ERROR:
-                            DriverException driverException = new DriverException("Error preparing query, got " + response);
-                            logError(connection.address, driverException);
-                            if (metricsEnabled())
-                                metrics().getErrorMetrics().getOthers().inc();
+                            Responses.Error err = (Responses.Error)response;
+                            DriverException driverException = new DriverException("Error preparing query, got " + response, err.asException(connection.address));
                             RetryPolicy.RetryDecision decision;
-                            if (retryPolicy instanceof ClientFailureAwareRetryPolicy)
-                                decision = ((ClientFailureAwareRetryPolicy)retryPolicy).onUnexpectedException(statement, request().consistency(), driverException, retriesByPolicy.get());
+                            if (retryPolicy instanceof ExtendedRetryPolicy)
+                                decision = ((ExtendedRetryPolicy)retryPolicy).onUnexpectedError(statement, request().consistency(), driverException, retriesByPolicy);
                             else
                                 decision = RetryPolicy.RetryDecision.tryNextHost(null);
+                            if (metricsEnabled()) {
+                                metrics().getErrorMetrics().getOthers().inc();
+                                if (decision.getType() == Type.RETRY)
+                                    metrics().getErrorMetrics().getRetriesOnUnexpectedError().inc();
+                                if (decision.getType() == Type.IGNORE)
+                                    metrics().getErrorMetrics().getIgnoresOnUnexpectedError().inc();
+                            }
                             processRetryDecision(decision, connection, driverException);
                             break;
                         default:
@@ -719,16 +735,16 @@ class RequestHandler {
                     ConnectionException ce = (ConnectionException)exception;
                     RetryPolicy retryPolicy = retryPolicy();
                     RetryPolicy.RetryDecision decision;
-                    if (retryPolicy instanceof ClientFailureAwareRetryPolicy)
-                        decision = ((ClientFailureAwareRetryPolicy)retryPolicy).onUnexpectedException(statement, request().consistency(), ce, retriesByPolicy.get());
+                    if (retryPolicy instanceof ExtendedRetryPolicy)
+                        decision = ((ExtendedRetryPolicy)retryPolicy).onConnectionError(statement, request().consistency(), ce, retriesByPolicy);
                     else
                         decision = RetryPolicy.RetryDecision.tryNextHost(null);
                     if (metricsEnabled()) {
                         metrics().getErrorMetrics().getConnectionErrors().inc();
                         if (decision.getType() == Type.RETRY)
-                            metrics().getErrorMetrics().getRetriesOnUnexpectedException().inc();
+                            metrics().getErrorMetrics().getRetriesOnConnectionError().inc();
                         if (decision.getType() == Type.IGNORE)
-                            metrics().getErrorMetrics().getIgnoresOnUnexpectedException().inc();
+                            metrics().getErrorMetrics().getIgnoresOnConnectionError().inc();
                     }
                     processRetryDecision(decision, connection, exception);
                     return;
@@ -760,11 +776,12 @@ class RequestHandler {
 
                 RetryPolicy retryPolicy = retryPolicy();
                 RetryPolicy.RetryDecision decision;
-                if (retryPolicy instanceof ClientFailureAwareRetryPolicy)
-                    decision = ((ClientFailureAwareRetryPolicy)retryPolicy).onClientTimeout(statement, request().consistency(), retriesByPolicy.get());
+                if (retryPolicy instanceof ExtendedRetryPolicy)
+                    decision = ((ExtendedRetryPolicy)retryPolicy).onClientTimeout(statement, request().consistency(), retriesByPolicy);
                 else
                     decision = RetryPolicy.RetryDecision.tryNextHost(null);
                 if (metricsEnabled()) {
+                    metrics().getErrorMetrics().getClientTimeouts().inc();
                     if (decision.getType() == Type.RETRY)
                         metrics().getErrorMetrics().getRetriesOnClientTimeout().inc();
                     if (decision.getType() == Type.IGNORE)
