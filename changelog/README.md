@@ -3,6 +3,7 @@
 ### 2.1.10 (in progress)
 
 - [bug] JAVA-988: Metadata.handleId should handle escaped double quotes.
+- [bug] JAVA-819: Driver shouldn't retry on client timeout if statement is not idempotent.
 
 
 ### 2.1.9
