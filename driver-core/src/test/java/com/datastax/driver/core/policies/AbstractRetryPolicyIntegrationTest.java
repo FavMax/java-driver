@@ -34,7 +34,6 @@ import static org.mockito.Matchers.anyInt;
 import static org.mockito.Mockito.times;
 
 import com.datastax.driver.core.*;
-import com.datastax.driver.core.exceptions.DriverException;
 
 /**
  * Base class for retry policy integration tests.
@@ -53,9 +52,16 @@ public class AbstractRetryPolicyIntegrationTest {
     protected Host host1, host2, host3;
     protected Session session;
 
-    protected ExtendedRetryPolicy retryPolicy;
+    protected RetryPolicy retryPolicy;
 
-    protected AbstractRetryPolicyIntegrationTest(ExtendedRetryPolicy retryPolicy) {
+    protected AbstractRetryPolicyIntegrationTest() {
+    }
+
+    protected AbstractRetryPolicyIntegrationTest(RetryPolicy retryPolicy) {
+        setRetryPolicy(retryPolicy);
+    }
+
+    protected final void setRetryPolicy(RetryPolicy retryPolicy) {
         this.retryPolicy = Mockito.spy(retryPolicy);
     }
 
@@ -130,7 +136,7 @@ public class AbstractRetryPolicyIntegrationTest {
     }
 
     protected void assertOnUnexpectedErrorWasCalled(int times) {
-        Mockito.verify(retryPolicy, times(times)).onUnexpectedError(
+        Mockito.verify((ExtendedRetryPolicy)retryPolicy, times(times)).onUnexpectedError(
             any(Statement.class), any(ConsistencyLevel.class), anyInt(), anyBoolean());
     }
 
