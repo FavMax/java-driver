@@ -13,7 +13,7 @@
  *   See the License for the specific language governing permissions and
  *   limitations under the License.
  */
-package com.datastax.driver.core.exceptions;
+package com.datastax.driver.core;
 
 import java.net.InetSocketAddress;
 
