@@ -45,6 +45,8 @@ public class DefaultRetryPolicyIntegrationTest extends AbstractRetryPolicyIntegr
         } catch (ReadTimeoutException e) {/*expected*/ }
 
         assertOnReadTimeoutWasCalled(1);
+        assertThat(errors.getReadTimeouts().getCount()).isEqualTo(1);
+        assertThat(errors.getRetries().getCount()).isEqualTo(0);
         assertThat(errors.getRetriesOnReadTimeout().getCount()).isEqualTo(0);
         assertQueried(1, 1);
         assertQueried(2, 0);
@@ -61,6 +63,8 @@ public class DefaultRetryPolicyIntegrationTest extends AbstractRetryPolicyIntegr
         } catch (WriteTimeoutException e) {/*expected*/}
 
         assertOnWriteTimeoutWasCalled(1);
+        assertThat(errors.getWriteTimeouts().getCount()).isEqualTo(1);
+        assertThat(errors.getRetries().getCount()).isEqualTo(0);
         assertThat(errors.getRetriesOnWriteTimeout().getCount()).isEqualTo(0);
         assertQueried(1, 1);
         assertQueried(2, 0);
@@ -75,6 +79,8 @@ public class DefaultRetryPolicyIntegrationTest extends AbstractRetryPolicyIntegr
         query();
 
         assertOnUnavailableWasCalled(1);
+        assertThat(errors.getUnavailables().getCount()).isEqualTo(1);
+        assertThat(errors.getRetries().getCount()).isEqualTo(1);
         assertThat(errors.getRetriesOnUnavailable().getCount()).isEqualTo(1);
         assertQueried(1, 1);
         assertQueried(2, 1);
@@ -92,6 +98,8 @@ public class DefaultRetryPolicyIntegrationTest extends AbstractRetryPolicyIntegr
         } catch (UnavailableException e) {/*expected*/}
 
         assertOnUnavailableWasCalled(2);
+        assertThat(errors.getUnavailables().getCount()).isEqualTo(2);
+        assertThat(errors.getRetries().getCount()).isEqualTo(1);
         assertThat(errors.getRetriesOnUnavailable().getCount()).isEqualTo(1);
         assertQueried(1, 1);
         assertQueried(2, 1);
