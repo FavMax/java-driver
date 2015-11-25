@@ -18,9 +18,6 @@ package com.datastax.driver.core.policies;
 import com.datastax.driver.core.ConsistencyLevel;
 import com.datastax.driver.core.Statement;
 import com.datastax.driver.core.WriteType;
-import com.datastax.driver.core.exceptions.ConnectionException;
-import com.datastax.driver.core.exceptions.DriverException;
-import com.datastax.driver.core.exceptions.OperationTimedOutException;
 
 /**
  * A retry policy that never retry (nor ignore).
@@ -91,64 +88,14 @@ public class FallthroughRetryPolicy implements ExtendedRetryPolicy {
     }
 
     /**
-     * Defines whether to retry and at which consistency level on a
-     * client timeout.
+     * {@inheritDoc}
      * <p>
      * This implementation triggers a retry on the next host in the query plan,
-     * regardless of the consistency level or the number of retries.
-     *
-     * @param statement the original query for which the consistency level cannot
-     * be achieved.
-     * @param cl the original consistency level for the operation.
-     * @param nbRetry the number of retry already performed for this operation.
-     * @return the retry decision. If {@code RetryDecision.RETHROW} is returned,
-     * an {@link OperationTimedOutException} will
-     * be thrown for the operation.
+     * regardless of the consistency level, the number of retries or
+     * the possibility that the mutation has been applied server-side.
      */
     @Override
-    public RetryDecision onClientTimeout(Statement statement, ConsistencyLevel cl, int nbRetry) {
-        return RetryDecision.tryNextHost(cl);
-    }
-
-    /**
-     * Defines whether to retry and at which consistency level when the connection
-     * encounters an error.
-     * <p>
-     * This implementation triggers a retry on the next host in the query plan,
-     * regardless of the consistency level or the number of retries.
-     *
-     * @param statement the original query for which the consistency level cannot
-     * be achieved.
-     * @param cl the original consistency level for the operation.
-     * @param e the original exception.
-     * @param nbRetry the number of retry already performed for this operation.
-     * @return the retry decision. If {@code RetryDecision.RETHROW} is returned,
-     * an {@link OperationTimedOutException} will
-     * be thrown for the operation.
-     */
-    @Override
-    public RetryDecision onConnectionError(Statement statement, ConsistencyLevel cl, ConnectionException e, int nbRetry) {
-        return RetryDecision.tryNextHost(cl);
-    }
-
-    /**
-     * Defines whether to retry and at which consistency level on an
-     * unexpected timeout.
-     * <p>
-     * This implementation triggers a retry on the next host in the query plan,
-     * regardless of the consistency level, the exception type or the number of retries.
-     *
-     * @param statement the original query for which the consistency level cannot
-     * be achieved.
-     * @param cl the original consistency level for the operation.
-     * @param e the original exception.
-     * @param nbRetry the number of retry already performed for this operation.
-     * @return the retry decision. If {@code RetryDecision.RETHROW} is returned,
-     * the exception passed to this method will
-     * be rethrown for the operation.
-     */
-    @Override
-    public RetryDecision onUnexpectedError(Statement statement, ConsistencyLevel cl, DriverException e, int nbRetry) {
+    public RetryDecision onUnexpectedError(Statement statement, ConsistencyLevel cl, int nbRetry, boolean mightHaveBeenApplied) {
         return RetryDecision.tryNextHost(cl);
     }
 

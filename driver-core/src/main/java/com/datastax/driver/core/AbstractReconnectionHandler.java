@@ -25,7 +25,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.datastax.driver.core.exceptions.AuthenticationException;
-import com.datastax.driver.core.exceptions.ConnectionException;
 import com.datastax.driver.core.policies.ReconnectionPolicy;
 
 /**

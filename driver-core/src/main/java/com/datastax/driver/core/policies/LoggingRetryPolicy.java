@@ -21,8 +21,6 @@ import org.slf4j.LoggerFactory;
 import com.datastax.driver.core.ConsistencyLevel;
 import com.datastax.driver.core.Statement;
 import com.datastax.driver.core.WriteType;
-import com.datastax.driver.core.exceptions.ConnectionException;
-import com.datastax.driver.core.exceptions.DriverException;
 
 /**
  * A retry policy that wraps another policy, logging the decision made by its sub-policy.
@@ -99,54 +97,18 @@ public class LoggingRetryPolicy implements ExtendedRetryPolicy {
     }
 
     @Override
-    public RetryDecision onClientTimeout(Statement statement, ConsistencyLevel cl, int nbRetry) {
+    public RetryDecision onUnexpectedError(Statement statement, ConsistencyLevel cl, int nbRetry, boolean mightHaveBeenApplied) {
         RetryDecision decision;
         if (policy instanceof ExtendedRetryPolicy)
-            decision = ((ExtendedRetryPolicy)policy).onClientTimeout(statement, cl, nbRetry);
+            decision = ((ExtendedRetryPolicy)policy).onUnexpectedError(statement, cl, nbRetry, mightHaveBeenApplied);
         else
             decision = RetryDecision.tryNextHost(cl);
         switch (decision.getType()) {
             case IGNORE:
-                logger.info(String.format("Ignoring client timeout (initial consistency: %s, retries: %d)", cl, nbRetry));
+                logger.info(String.format("Ignoring unexpected error (initial consistency: %s, retries: %d)", cl, nbRetry));
                 break;
             case RETRY:
-                logger.info(String.format("Retrying on client timeout at consistency %s (initial consistency: %s, retries: %d)", cl(cl, decision), cl, nbRetry));
-                break;
-        }
-        return decision;
-    }
-
-    @Override
-    public RetryDecision onConnectionError(Statement statement, ConsistencyLevel cl, ConnectionException e, int nbRetry) {
-        RetryDecision decision;
-        if (policy instanceof ExtendedRetryPolicy)
-            decision = ((ExtendedRetryPolicy)policy).onClientTimeout(statement, cl, nbRetry);
-        else
-            decision = RetryDecision.tryNextHost(cl);
-        switch (decision.getType()) {
-            case IGNORE:
-                logger.info(String.format("Ignoring conenction error (initial consistency: %s, retries: %d)", cl, nbRetry));
-                break;
-            case RETRY:
-                logger.info(String.format("Retrying on connection error at consistency %s (initial consistency: %s, retries: %d)", cl(cl, decision), cl, nbRetry));
-                break;
-        }
-        return decision;
-    }
-
-    @Override
-    public RetryDecision onUnexpectedError(Statement statement, ConsistencyLevel cl, DriverException e, int nbRetry) {
-        RetryDecision decision;
-        if (policy instanceof ExtendedRetryPolicy)
-            decision = ((ExtendedRetryPolicy)policy).onUnexpectedError(statement, cl, e, nbRetry);
-        else
-            decision = RetryDecision.tryNextHost(cl);
-        switch (decision.getType()) {
-            case IGNORE:
-                logger.info(String.format("Ignoring unexpected exception (initial consistency: %s, retries: %d)", cl, nbRetry), e);
-                break;
-            case RETRY:
-                logger.info(String.format("Retrying on unavailable exception at consistency %s (initial consistency: %s, retries: %d)", cl(cl, decision), cl, nbRetry), e);
+                logger.info(String.format("Retrying on unexpected error at consistency %s (initial consistency: %s, retries: %d)", cl(cl, decision), cl, nbRetry));
                 break;
         }
         return decision;

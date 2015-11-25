@@ -15,17 +15,12 @@
  */
 package com.datastax.driver.core.policies;
 
-import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.ConsistencyLevel;
-import com.datastax.driver.core.Session;
+import com.datastax.driver.core.SocketOptions;
 import com.datastax.driver.core.Statement;
-import com.datastax.driver.core.exceptions.ConnectionException;
-import com.datastax.driver.core.exceptions.DriverException;
-import com.datastax.driver.core.exceptions.OperationTimedOutException;
 
 /**
- * A policy that defines a default behavior to adopt in the event of a timeout
- * or other unexpected exceptions.
+ * A policy that defines a default behavior to adopt in the event of unexpected errors.
  * <p>
  * This interface exists only for backward compatibility reasons: its methods should really be
  * defined by {@link RetryPolicy}, but adding it after the fact would break binary compatibility.
@@ -36,47 +31,36 @@ import com.datastax.driver.core.exceptions.OperationTimedOutException;
 public interface ExtendedRetryPolicy extends RetryPolicy {
 
     /**
-     * Defines whether to retry and at which consistency level on a
-     * client timeout.
+     * Defines whether to retry and at which consistency level on an
+     * unexpected error.
+     * <p>
+     * This method might be invoked in the following situations:
+     * <ol>
+     *     <li>On a client timeout, while waiting for the server response
+     *     (see {@link SocketOptions#getReadTimeoutMillis()});</li>
+     *     <li>On a connection error (socket closed, etc.);</li>
+     *     <li>When the contacted host replies with an error, such as
+     *     {@code OVERLOADED}, {@code IS_BOOTSTRAPPING}, {@code SERVER_ERROR}, etc.</li>
+     *     <li>When the driver encounters an internal error.</li>
+     * </ol>
      *
-     * @param statement the original query for which the consistency level cannot
-     * be achieved.
-     * @param cl the original consistency level for the operation.
-     * @param nbRetry the number of retry already performed for this operation.
-     * @return the retry decision. If {@code RetryDecision.RETHROW} is returned,
-     * an {@link OperationTimedOutException} will be thrown for the operation.
-     */
-    RetryDecision onClientTimeout(Statement statement, ConsistencyLevel cl, int nbRetry);
-
-    /**
-     * Defines whether to retry and at which consistency level when the connection
-     * encounters an error.
+     * Note that when this method is invoked, <em>the driver cannot guarantee that a mutation has
+     * been effectively applied server-side</em>.
+     * The parameter {@code mightHaveBeenApplied} can however be inspected to determine whether the mutation
+     * is <em>likely</em> to have been applied.
+     * When this flag is {@code false}, then it is certain that the query hasn't been applied,
+     * and it is always safe to retry it; when it is
+     * {@code true}, there is a non-negligible chance that the query has reached the coordinator
+     * and that it has been applied already; a retry should only be attempted if the query is known to be idempotent.
      *
-     * @param statement the original query for which the consistency level cannot
-     * be achieved.
-     * @param cl the original consistency level for the operation.
-     * @param e the original exception.
-     * @param nbRetry the number of retry already performed for this operation.
-     * @return the retry decision. If {@code RetryDecision.RETHROW} is returned,
-     * the exception passed to this method will be rethrown for the operation.
-     */
-    RetryDecision onConnectionError(Statement statement, ConsistencyLevel cl, ConnectionException e, int nbRetry);
-
-    /**
-     * Defines whether to retry and at which consistency level when the contacted host
-     * replies with an unexpected response, such as
-     * {@link com.datastax.driver.core.exceptions.ServerError},
-     * {@link com.datastax.driver.core.exceptions.OverloadedException} or
-     * {@link com.datastax.driver.core.exceptions.BootstrappingException}.
      *
-     * @param statement the original query for which the consistency level cannot
-     * be achieved.
+     * @param statement the original query that failed.
      * @param cl the original consistency level for the operation.
-     * @param e the original exception.
-     * @param nbRetry the number of retry already performed for this operation.
+     * @param nbRetry the number of retries already performed for this operation.
+     * @param mightHaveBeenApplied whether the mutation is likely to have been applied server-side.
      * @return the retry decision. If {@code RetryDecision.RETHROW} is returned,
-     * the exception passed to this method will be rethrown for the operation.
+     * a {@link com.datastax.driver.core.exceptions.DriverException DriverException} will be thrown for the operation.
      */
-    RetryDecision onUnexpectedError(Statement statement, ConsistencyLevel cl, DriverException e, int nbRetry);
+    RetryDecision onUnexpectedError(Statement statement, ConsistencyLevel cl, int nbRetry, boolean mightHaveBeenApplied);
 
 }

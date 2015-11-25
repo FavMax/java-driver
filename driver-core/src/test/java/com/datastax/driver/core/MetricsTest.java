@@ -23,10 +23,7 @@ import org.testng.annotations.Test;
 import static org.testng.Assert.assertEquals;
 
 import com.datastax.driver.core.Metrics.Errors;
-import com.datastax.driver.core.exceptions.ConnectionException;
-import com.datastax.driver.core.exceptions.DriverException;
 import com.datastax.driver.core.policies.ExtendedRetryPolicy;
-import com.datastax.driver.core.policies.RetryPolicy;
 import com.datastax.driver.core.policies.RetryPolicy.RetryDecision;
 
 public class MetricsTest extends CCMBridge.PerClassSingleNodeCluster {
@@ -51,19 +48,10 @@ public class MetricsTest extends CCMBridge.PerClassSingleNodeCluster {
             }
 
             @Override
-            public RetryDecision onClientTimeout(Statement statement, ConsistencyLevel cl, int nbRetry) {
+            public RetryDecision onUnexpectedError(Statement statement, ConsistencyLevel cl, int nbRetry, boolean mightHaveBeenApplied) {
                 return retryDecision;
             }
 
-            @Override
-            public RetryDecision onConnectionError(Statement statement, ConsistencyLevel cl, ConnectionException e, int nbRetry) {
-                return retryDecision;
-            }
-
-            @Override
-            public RetryDecision onUnexpectedError(Statement statement, ConsistencyLevel cl, DriverException e, int nbRetry) {
-                return retryDecision;
-            }
         });
     }
 

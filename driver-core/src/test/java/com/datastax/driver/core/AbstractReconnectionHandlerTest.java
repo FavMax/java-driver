@@ -40,7 +40,6 @@ import static org.testng.Assert.fail;
 
 import com.datastax.driver.core.AbstractReconnectionHandler.HandlerFuture;
 import com.datastax.driver.core.AbstractReconnectionHandlerTest.MockReconnectionWork.ReconnectBehavior;
-import com.datastax.driver.core.exceptions.ConnectionException;
 import com.datastax.driver.core.policies.ReconnectionPolicy.ReconnectionSchedule;
 
 public class AbstractReconnectionHandlerTest {

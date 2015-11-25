@@ -24,8 +24,6 @@ import org.testng.annotations.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.datastax.driver.core.exceptions.ConnectionException;
-import com.datastax.driver.core.exceptions.DriverException;
 import com.datastax.driver.core.policies.*;
 
 public class StatementWrapperTest extends CCMBridge.PerClassSingleNodeCluster {
@@ -147,17 +145,7 @@ public class StatementWrapperTest extends CCMBridge.PerClassSingleNodeCluster {
         }
 
         @Override
-        public RetryDecision onClientTimeout(Statement statement, ConsistencyLevel cl, int nbRetry) {
-            return RetryDecision.tryNextHost(cl);
-        }
-
-        @Override
-        public RetryDecision onConnectionError(Statement statement, ConsistencyLevel cl, ConnectionException e, int nbRetry) {
-            return RetryDecision.tryNextHost(cl);
-        }
-
-        @Override
-        public RetryDecision onUnexpectedError(Statement statement, ConsistencyLevel cl, DriverException e, int nbRetry) {
+        public RetryDecision onUnexpectedError(Statement statement, ConsistencyLevel cl, int nbRetry, boolean mightHaveBeenApplied) {
             return RetryDecision.tryNextHost(cl);
         }
 

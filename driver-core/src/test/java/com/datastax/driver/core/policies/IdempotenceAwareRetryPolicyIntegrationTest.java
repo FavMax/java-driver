@@ -17,6 +17,7 @@ package com.datastax.driver.core.policies;
 
 import org.assertj.core.api.Fail;
 import org.scassandra.http.client.PrimingRequest;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -34,6 +35,7 @@ import com.datastax.driver.core.exceptions.*;
  * Integration test with a IdempotenceAwareRetryPolicy.
  */
 public class IdempotenceAwareRetryPolicyIntegrationTest extends AbstractRetryPolicyIntegrationTest {
+
     public IdempotenceAwareRetryPolicyIntegrationTest() {
         super(new IdempotenceAwareRetryPolicy(new CustomRetryPolicy(), new QueryOptions().setDefaultIdempotence(false)));
     }
@@ -41,18 +43,29 @@ public class IdempotenceAwareRetryPolicyIntegrationTest extends AbstractRetryPol
     @Test(groups = "short")
     public void should_not_retry_on_write_timeout_if_statement_non_idempotent() {
         simulateError(1, write_request_timeout);
-
         try {
             query();
             fail("expected an WriteTimeoutException");
         } catch (WriteTimeoutException e) {/* expected */}
-
         assertOnWriteTimeoutWasCalled(1);
         assertThat(errors.getWriteTimeouts().getCount()).isEqualTo(1);
         assertThat(errors.getRetries().getCount()).isEqualTo(0);
         assertThat(errors.getRetriesOnWriteTimeout().getCount()).isEqualTo(0);
         assertQueried(1, 1);
         assertQueried(2, 0);
+        assertQueried(3, 0);
+    }
+
+    @Test(groups = "short")
+    public void should_retry_on_write_timeout_if_statement_idempotent() {
+        simulateError(1, write_request_timeout);
+        session.execute(new SimpleStatement("mock query").setIdempotent(true));
+        assertOnWriteTimeoutWasCalled(1);
+        assertThat(errors.getWriteTimeouts().getCount()).isEqualTo(1);
+        assertThat(errors.getRetries().getCount()).isEqualTo(1);
+        assertThat(errors.getRetriesOnWriteTimeout().getCount()).isEqualTo(1);
+        assertQueried(1, 1);
+        assertQueried(2, 1);
         assertQueried(3, 0);
     }
 
@@ -68,10 +81,13 @@ public class IdempotenceAwareRetryPolicyIntegrationTest extends AbstractRetryPol
                     .build());
             try {
                 query();
-                Fail.fail("expected a NoHostAvailableException");
-            } catch (OperationTimedOutException e) {/* expected */}
-
-            assertOnClientTimeoutWasCalled(1);
+                fail("expected a DriverException");
+            } catch (DriverException e) {
+                assertThat(e.getMessage()).isEqualTo(
+                    String.format("[%s]: Timed out waiting for server response", host1.getSocketAddress())
+                );
+            }
+            assertOnUnexpectedErrorWasCalled(1);
             assertThat(errors.getClientTimeouts().getCount()).isEqualTo(1);
             assertThat(errors.getRetries().getCount()).isEqualTo(0);
             assertThat(errors.getRetriesOnClientTimeout().getCount()).isEqualTo(0);
@@ -83,25 +99,47 @@ public class IdempotenceAwareRetryPolicyIntegrationTest extends AbstractRetryPol
         }
     }
 
+    @Test(groups = "short")
+    public void should_retry_on_client_timeout_if_statement_idempotent() {
+        cluster.getConfiguration().getSocketOptions().setReadTimeoutMillis(1);
+        try {
+            scassandras
+                .prime(1, PrimingRequest.queryBuilder()
+                    .withQuery("mock query")
+                    .withFixedDelay(1000)
+                    .withRows(row("result", "result1"))
+                    .build());
+            session.execute(new SimpleStatement("mock query").setIdempotent(true));
+            assertOnUnexpectedErrorWasCalled(1);
+            assertThat(errors.getClientTimeouts().getCount()).isEqualTo(1);
+            assertThat(errors.getRetries().getCount()).isEqualTo(1);
+            assertThat(errors.getRetriesOnClientTimeout().getCount()).isEqualTo(1);
+            assertQueried(1, 1);
+            assertQueried(2, 1);
+            assertQueried(3, 0);
+        } finally {
+            cluster.getConfiguration().getSocketOptions().setReadTimeoutMillis(SocketOptions.DEFAULT_READ_TIMEOUT_MILLIS);
+        }
+    }
+
     @DataProvider
-    public static Object[][] unexpectedErrors() {
+    public static Object[][] serverSideErrors() {
         return new Object[][]{
             {server_error, ServerError.class},
-            {overloaded, BootstrappingException.class},
-            {is_bootstrapping, BootstrappingException.class}
+            {overloaded  , OverloadedException.class}
         };
     }
 
-    @Test(groups = "short", dataProvider = "unexpectedErrors")
-    public void should_not_retry_on_unexpected_exception_if_statement_non_idempotent(PrimingRequest.Result error, Class<? extends DriverException> exception) {
+    @Test(groups = "short", dataProvider = "serverSideErrors")
+    public void should_not_retry_on_server_error_if_statement_non_idempotent(PrimingRequest.Result error, Class<? extends DriverException> exception) {
         simulateError(1, error);
-
         try {
             query();
-            Fail.fail("expected " + error);
-        } catch (DriverInternalError e) {/*expected*/}
-
-        assertOnUnexpectedErrorWasCalled(1, exception);
+            fail("expected " + exception);
+        } catch (DriverException e) {
+            assertThat(e).isInstanceOf(exception);
+        }
+        assertOnUnexpectedErrorWasCalled(1);
         assertThat(errors.getOthers().getCount()).isEqualTo(1);
         assertThat(errors.getRetries().getCount()).isEqualTo(0);
         assertThat(errors.getRetriesOnUnexpectedError().getCount()).isEqualTo(0);
@@ -110,40 +148,79 @@ public class IdempotenceAwareRetryPolicyIntegrationTest extends AbstractRetryPol
         assertQueried(3, 0);
     }
 
+    @SuppressWarnings("UnusedParameters")
+    @Test(groups = "short", dataProvider = "serverSideErrors")
+    public void should_retry_on_server_error_if_statement_idempotent(PrimingRequest.Result error, Class<? extends DriverException> exception) {
+        simulateError(1, error);
+        simulateError(2, error);
+        simulateError(3, error);
+        try {
+            session.execute(new SimpleStatement("mock query").setIdempotent(true));
+            fail("expected a NoHostAvailableException");
+        } catch (NoHostAvailableException e) {
+            assertThat(e.getErrors().keySet()).hasSize(3).containsExactly(
+                host1.getSocketAddress(),
+                host2.getSocketAddress(),
+                host3.getSocketAddress());
+            assertThat(e.getErrors().values()).hasOnlyElementsOfType(exception);
+        }
+        assertOnUnexpectedErrorWasCalled(3);
+        assertThat(errors.getOthers().getCount()).isEqualTo(3);
+        assertThat(errors.getRetries().getCount()).isEqualTo(3);
+        assertThat(errors.getRetriesOnUnexpectedError().getCount()).isEqualTo(3);
+        assertQueried(1, 1);
+        assertQueried(2, 1);
+        assertQueried(3, 1);
+    }
+
+    @Test(groups = "short")
+    public void should_always_retry_on_bootstrapping_even_if_statement_non_idempotent() {
+        simulateError(1, is_bootstrapping);
+        simulateError(2, is_bootstrapping);
+        simulateError(3, is_bootstrapping);
+        try {
+            query();
+            fail("expected a NoHostAvailableException");
+        } catch (NoHostAvailableException e) {
+            assertThat(e.getErrors().keySet()).hasSize(3).containsExactly(
+                host1.getSocketAddress(),
+                host2.getSocketAddress(),
+                host3.getSocketAddress());
+            assertThat(e.getErrors().values()).hasOnlyElementsOfType(BootstrappingException.class);
+        }
+        assertOnUnexpectedErrorWasCalled(3);
+        assertThat(errors.getOthers().getCount()).isEqualTo(3);
+        assertThat(errors.getRetries().getCount()).isEqualTo(3);
+        assertThat(errors.getRetriesOnUnexpectedError().getCount()).isEqualTo(3);
+        assertQueried(1, 1);
+        assertQueried(2, 1);
+        assertQueried(3, 1);
+    }
 
     /**
-     * Retries everything, but since all statements are non idempotent, nothing should actually be retried.
+     * Retries everything on the next host.
      */
     static class CustomRetryPolicy implements ExtendedRetryPolicy {
 
         @Override
         public RetryDecision onReadTimeout(Statement statement, ConsistencyLevel cl, int requiredResponses, int receivedResponses, boolean dataRetrieved, int nbRetry) {
-            return RetryDecision.retry(cl);
+            return RetryDecision.tryNextHost(cl);
         }
 
         @Override
         public RetryDecision onWriteTimeout(Statement statement, ConsistencyLevel cl, WriteType writeType, int requiredAcks, int receivedAcks, int nbRetry) {
-            return RetryDecision.retry(cl);
+            return RetryDecision.tryNextHost(cl);
         }
 
         @Override
         public RetryDecision onUnavailable(Statement statement, ConsistencyLevel cl, int requiredReplica, int aliveReplica, int nbRetry) {
-            return RetryDecision.retry(cl);
-        }
-
-        @Override
-        public RetryDecision onClientTimeout(Statement statement, ConsistencyLevel cl, int nbRetry) {
             return RetryDecision.tryNextHost(cl);
         }
 
         @Override
-        public RetryDecision onConnectionError(Statement statement, ConsistencyLevel cl, ConnectionException e, int nbRetry) {
+        public RetryDecision onUnexpectedError(Statement statement, ConsistencyLevel cl, int nbRetry, boolean mightHaveBeenApplied) {
             return RetryDecision.tryNextHost(cl);
         }
 
-        @Override
-        public RetryDecision onUnexpectedError(Statement statement, ConsistencyLevel cl, DriverException e, int nbRetry) {
-            return RetryDecision.tryNextHost(cl);
-        }
     }
 }

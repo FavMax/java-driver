@@ -27,8 +27,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
-import com.datastax.driver.core.exceptions.ConnectionException;
-import com.datastax.driver.core.exceptions.DriverException;
 import com.datastax.driver.core.policies.ConstantSpeculativeExecutionPolicy;
 import com.datastax.driver.core.policies.ExtendedRetryPolicy;
 import com.datastax.driver.core.policies.SpeculativeExecutionPolicy;
@@ -242,19 +240,10 @@ public class SpeculativeExecutionTest {
         }
 
         @Override
-        public RetryDecision onClientTimeout(Statement statement, ConsistencyLevel cl, int nbRetry) {
+        public RetryDecision onUnexpectedError(Statement statement, ConsistencyLevel cl, int nbRetry, boolean mightHaveBeenApplied) {
             return RetryDecision.tryNextHost(cl);
         }
 
-        @Override
-        public RetryDecision onConnectionError(Statement statement, ConsistencyLevel cl, ConnectionException e, int nbRetry) {
-            return RetryDecision.tryNextHost(cl);
-        }
-
-        @Override
-        public RetryDecision onUnexpectedError(Statement statement, ConsistencyLevel cl, DriverException e, int nbRetry) {
-            return RetryDecision.tryNextHost(cl);
-        }
     }
 
     private static List<Map<String, ?>> row(String key, String value) {

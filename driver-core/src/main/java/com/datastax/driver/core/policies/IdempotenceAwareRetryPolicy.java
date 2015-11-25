@@ -19,11 +19,14 @@ import com.datastax.driver.core.ConsistencyLevel;
 import com.datastax.driver.core.QueryOptions;
 import com.datastax.driver.core.Statement;
 import com.datastax.driver.core.WriteType;
-import com.datastax.driver.core.exceptions.ConnectionException;
-import com.datastax.driver.core.exceptions.DriverException;
 
 /**
  * A retry policy that avoids retrying non-idempotent statements.
+ * <p>
+ * In case of write timeouts or unexpected errors, this policy will always return {@link RetryDecision#rethrow()}
+ * if the statement is deemed non-idempotent (see {@link #isIdempotent(Statement)}).
+ * <p>
+ * For all other cases, this policy delegates the decision to the child policy.
  */
 public class IdempotenceAwareRetryPolicy implements ExtendedRetryPolicy {
 
@@ -32,13 +35,7 @@ public class IdempotenceAwareRetryPolicy implements ExtendedRetryPolicy {
     private final QueryOptions queryOptions;
 
     /**
-     * Creates a new {@code RetryPolicy} that logs the decision of {@code policy}.
-     *
-     * @param policy the policy to wrap. The policy created by this constructor
-     * will return the same decision than {@code policy} but will log them.
-     */
-    /**
-     *
+     * Creates a new instance.
      * @param childPolicy the policy to wrap.
      * @param queryOptions the cluster's {@link QueryOptions} object.
      */
@@ -66,25 +63,9 @@ public class IdempotenceAwareRetryPolicy implements ExtendedRetryPolicy {
     }
 
     @Override
-    public RetryDecision onClientTimeout(Statement statement, ConsistencyLevel cl, int nbRetry) {
-        if(isIdempotent(statement))
-            return childPolicy.onClientTimeout(statement, cl, nbRetry);
-        else
-            return RetryDecision.rethrow();
-    }
-
-    @Override
-    public RetryDecision onConnectionError(Statement statement, ConsistencyLevel cl, ConnectionException e, int nbRetry) {
-        if(isIdempotent(statement))
-            return childPolicy.onClientTimeout(statement, cl, nbRetry);
-        else
-            return RetryDecision.rethrow();
-    }
-
-    @Override
-    public RetryDecision onUnexpectedError(Statement statement, ConsistencyLevel cl, DriverException e, int nbRetry) {
-        if(isIdempotent(statement))
-            return childPolicy.onUnexpectedError(statement, cl, e, nbRetry);
+    public RetryDecision onUnexpectedError(Statement statement, ConsistencyLevel cl, int nbRetry, boolean mightHaveBeenApplied) {
+        if(isIdempotent(statement) || !mightHaveBeenApplied)
+            return childPolicy.onUnexpectedError(statement, cl, nbRetry, mightHaveBeenApplied);
         else
             return RetryDecision.rethrow();
     }

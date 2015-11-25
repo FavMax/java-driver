@@ -15,22 +15,17 @@
  */
 package com.datastax.driver.core.policies;
 
-import com.datastax.driver.core.CCMBridge;
-import com.datastax.driver.core.Cluster;
-import com.datastax.driver.core.Metrics;
-import com.datastax.driver.core.Session;
-import com.datastax.driver.core.exceptions.NoHostAvailableException;
+import com.datastax.driver.core.*;
+import com.datastax.driver.core.exceptions.*;
+
+import org.assertj.core.api.Fail;
+import org.scassandra.http.client.PrimingRequest;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.fail;
-import static org.scassandra.http.client.PrimingRequest.Result.read_request_timeout;
-import static org.scassandra.http.client.PrimingRequest.Result.unavailable;
-import static org.scassandra.http.client.PrimingRequest.Result.write_request_timeout;
-
-import com.datastax.driver.core.exceptions.ReadTimeoutException;
-import com.datastax.driver.core.exceptions.UnavailableException;
-import com.datastax.driver.core.exceptions.WriteTimeoutException;
+import static org.scassandra.http.client.PrimingRequest.Result.*;
 
 import java.util.Collections;
 
@@ -142,4 +137,84 @@ public class DefaultRetryPolicyIntegrationTest extends AbstractRetryPolicyIntegr
             whiteListedCluster.close();
         }
     }
+
+    @Test(groups = "short")
+    public void should_try_next_host_on_client_timeouts() {
+        cluster.getConfiguration().getSocketOptions().setReadTimeoutMillis(1);
+        try {
+            scassandras
+                .prime(1, PrimingRequest.queryBuilder()
+                    .withQuery("mock query")
+                    .withFixedDelay(1000)
+                    .withRows(row("result", "result1"))
+                    .build())
+                .prime(2, PrimingRequest.queryBuilder()
+                    .withQuery("mock query")
+                    .withFixedDelay(1000)
+                    .withRows(row("result", "result2"))
+                    .build())
+                .prime(3, PrimingRequest.queryBuilder()
+                    .withQuery("mock query")
+                    .withFixedDelay(1000)
+                    .withRows(row("result", "result3"))
+                    .build());
+            try {
+                query();
+                fail("expected a NoHostAvailableException");
+            } catch (NoHostAvailableException e) {
+                assertThat(e.getErrors().keySet()).hasSize(3).containsExactly(
+                    host1.getSocketAddress(),
+                    host2.getSocketAddress(),
+                    host3.getSocketAddress());
+                assertThat(e.getErrors().values()).extractingResultOf("getMessage").containsExactly(
+                    String.format("[%s]: Timed out waiting for server response", host1.getSocketAddress()),
+                    String.format("[%s]: Timed out waiting for server response", host2.getSocketAddress()),
+                    String.format("[%s]: Timed out waiting for server response", host3.getSocketAddress())
+                );
+            }
+            assertOnUnexpectedErrorWasCalled(3);
+            assertThat(errors.getRetries().getCount()).isEqualTo(3);
+            assertThat(errors.getClientTimeouts().getCount()).isEqualTo(3);
+            assertThat(errors.getRetriesOnClientTimeout().getCount()).isEqualTo(3);
+            assertQueried(1, 1);
+            assertQueried(2, 1);
+            assertQueried(3, 1);
+        } finally {
+            cluster.getConfiguration().getSocketOptions().setReadTimeoutMillis(SocketOptions.DEFAULT_READ_TIMEOUT_MILLIS);
+        }
+    }
+
+    @DataProvider
+    public static Object[][] serverSideErrors() {
+        return new Object[][]{
+            {server_error    , ServerError.class},
+            {overloaded      , OverloadedException.class},
+            {is_bootstrapping, BootstrappingException.class}
+        };
+    }
+
+    @Test(groups = "short", dataProvider = "serverSideErrors")
+    public void should_try_next_host_on_server_side_error(PrimingRequest.Result error, Class<?> exception) {
+        simulateError(1, error);
+        simulateError(2, error);
+        simulateError(3, error);
+        try {
+            query();
+            Fail.fail("expected a NoHostAvailableException");
+        } catch (NoHostAvailableException e) {
+            assertThat(e.getErrors().keySet()).hasSize(3).containsExactly(
+                host1.getSocketAddress(),
+                host2.getSocketAddress(),
+                host3.getSocketAddress());
+            assertThat(e.getErrors().values()).hasOnlyElementsOfType(exception);
+        }
+        assertOnUnexpectedErrorWasCalled(3);
+        assertThat(errors.getOthers().getCount()).isEqualTo(3);
+        assertThat(errors.getRetries().getCount()).isEqualTo(3);
+        assertThat(errors.getRetriesOnUnexpectedError().getCount()).isEqualTo(3);
+        assertQueried(1, 1);
+        assertQueried(2, 1);
+        assertQueried(3, 1);
+    }
+
 }

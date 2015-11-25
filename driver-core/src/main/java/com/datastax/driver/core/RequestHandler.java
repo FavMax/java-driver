@@ -253,6 +253,7 @@ class RequestHandler {
         private volatile int retriesByPolicy;
 
         private volatile Connection.ResponseHandler connectionHandler;
+        private volatile boolean requestSent = false;
 
         SpeculativeExecution(Message.Request request, int position) {
             this.id = RequestHandler.this.id + "-" + position;
@@ -279,6 +280,8 @@ class RequestHandler {
         }
 
         private boolean query(final Host host) {
+            // set this flag to false at the beginning of each attempt to send the query
+            requestSent = false;
             HostConnectionPool currentPool = manager.pools.get(host);
             if (currentPool == null || currentPool.isClosed())
                 return false;
@@ -339,6 +342,8 @@ class RequestHandler {
                     break;
             }
 
+            // set this flag to true before writing the request
+            requestSent = true;
             connectionHandler = connection.write(responseCallback, false);
             // Only start the timeout when we're sure connectionHandler is set. This avoids an edge case where onTimeout() was triggered
             // *before* the call to connection.write had returned.
@@ -520,8 +525,7 @@ class RequestHandler {
                                 if (retryPolicy instanceof ExtendedRetryPolicy)
                                     retry = ((ExtendedRetryPolicy)retryPolicy).onUnexpectedError(statement,
                                         request().consistency(),
-                                        (DriverException)exceptionToReport,
-                                        retriesByPolicy);
+                                        retriesByPolicy, true);
                                 else
                                     retry = RetryPolicy.RetryDecision.tryNextHost(null);
                                 if (metricsEnabled()) {
@@ -540,8 +544,7 @@ class RequestHandler {
                                 if (retryPolicy instanceof ExtendedRetryPolicy)
                                     retry = ((ExtendedRetryPolicy)retryPolicy).onUnexpectedError(statement,
                                         request().consistency(),
-                                        (DriverException)exceptionToReport,
-                                        retriesByPolicy);
+                                        retriesByPolicy, true);
                                 else
                                     retry = RetryPolicy.RetryDecision.tryNextHost(null);
                                 if (metricsEnabled()) {
@@ -558,8 +561,7 @@ class RequestHandler {
                                 if (retryPolicy instanceof ExtendedRetryPolicy)
                                     retry = ((ExtendedRetryPolicy)retryPolicy).onUnexpectedError(statement,
                                         request().consistency(),
-                                        (DriverException)exceptionToReport,
-                                        retriesByPolicy);
+                                        retriesByPolicy, false);
                                 else
                                     retry = RetryPolicy.RetryDecision.tryNextHost(null);
                                 if (metricsEnabled()) {
@@ -655,7 +657,6 @@ class RequestHandler {
 
                     connection.release();
 
-                    // TODO should we check the response ?
                     RetryPolicy retryPolicy = retryPolicy();
                     switch (response.type) {
                         case RESULT:
@@ -668,7 +669,7 @@ class RequestHandler {
                                 DriverException driverException = new DriverException("Got unexpected response to prepare message: " + response);
                                 RetryPolicy.RetryDecision decision;
                                 if (retryPolicy instanceof ExtendedRetryPolicy)
-                                    decision = ((ExtendedRetryPolicy)retryPolicy).onUnexpectedError(statement, request().consistency(), driverException, retriesByPolicy);
+                                    decision = ((ExtendedRetryPolicy)retryPolicy).onUnexpectedError(statement, request().consistency(), retriesByPolicy, false);
                                 else
                                     decision = RetryPolicy.RetryDecision.tryNextHost(null);
                                 if (metricsEnabled()) {
@@ -686,7 +687,7 @@ class RequestHandler {
                             DriverException driverException = new DriverException("Error preparing query, got " + response, err.asException(connection.address));
                             RetryPolicy.RetryDecision decision;
                             if (retryPolicy instanceof ExtendedRetryPolicy)
-                                decision = ((ExtendedRetryPolicy)retryPolicy).onUnexpectedError(statement, request().consistency(), driverException, retriesByPolicy);
+                                decision = ((ExtendedRetryPolicy)retryPolicy).onUnexpectedError(statement, request().consistency(), retriesByPolicy, false);
                             else
                                 decision = RetryPolicy.RetryDecision.tryNextHost(null);
                             if (metricsEnabled()) {
@@ -731,12 +732,12 @@ class RequestHandler {
             Host queriedHost = current;
             try {
                 connection.release();
+
                 if (exception instanceof ConnectionException) {
-                    ConnectionException ce = (ConnectionException)exception;
                     RetryPolicy retryPolicy = retryPolicy();
                     RetryPolicy.RetryDecision decision;
                     if (retryPolicy instanceof ExtendedRetryPolicy)
-                        decision = ((ExtendedRetryPolicy)retryPolicy).onConnectionError(statement, request().consistency(), ce, retriesByPolicy);
+                        decision = ((ExtendedRetryPolicy)retryPolicy).onUnexpectedError(statement, request().consistency(), retriesByPolicy, requestSent);
                     else
                         decision = RetryPolicy.RetryDecision.tryNextHost(null);
                     if (metricsEnabled()) {
@@ -770,14 +771,20 @@ class RequestHandler {
             }
 
             Host queriedHost = current;
-            OperationTimedOutException timeoutException = new OperationTimedOutException(connection.address);
+
+            // This cannot be OperationTimedOutException because
+            // it's an internal exception, while
+            // the exception created here might be propagated in case of RETHROW decision,
+            // and thus must inherit from DriverException (see DriverThrowables)
+            DriverException timeoutException = new DriverException(String.format("[%s]: Timed out waiting for server response", connection.address));
+
             try {
                 connection.release();
 
                 RetryPolicy retryPolicy = retryPolicy();
                 RetryPolicy.RetryDecision decision;
                 if (retryPolicy instanceof ExtendedRetryPolicy)
-                    decision = ((ExtendedRetryPolicy)retryPolicy).onClientTimeout(statement, request().consistency(), retriesByPolicy);
+                    decision = ((ExtendedRetryPolicy)retryPolicy).onUnexpectedError(statement, request().consistency(), retriesByPolicy, true);
                 else
                     decision = RetryPolicy.RetryDecision.tryNextHost(null);
                 if (metricsEnabled()) {

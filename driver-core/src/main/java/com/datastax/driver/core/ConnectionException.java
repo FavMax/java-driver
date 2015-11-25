@@ -15,41 +15,24 @@
  */
 package com.datastax.driver.core;
 
-import java.net.InetAddress;
 import java.net.InetSocketAddress;
 
-import com.datastax.driver.core.exceptions.CoordinatorException;
-import com.datastax.driver.core.exceptions.DriverException;
-
-public class ConnectionException extends DriverException implements CoordinatorException {
+class ConnectionException extends Exception {
 
     private static final long serialVersionUID = 0;
 
     public final InetSocketAddress address;
 
-    public ConnectionException(InetSocketAddress address, String msg, Throwable cause) {
+    public ConnectionException(InetSocketAddress address, String msg, Throwable cause)
+    {
         super(msg, cause);
         this.address = address;
     }
 
-    public ConnectionException(InetSocketAddress address, String msg) {
+    public ConnectionException(InetSocketAddress address, String msg)
+    {
         super(msg);
         this.address = address;
-    }
-
-    @Override
-    public InetAddress getHost() {
-        return address.getAddress();
-    }
-
-    @Override
-    public InetSocketAddress getAddress() {
-        return address;
-    }
-
-    @Override
-    public DriverException copy() {
-        return new ConnectionException(address, getMessage(), this);
     }
 
     @Override
