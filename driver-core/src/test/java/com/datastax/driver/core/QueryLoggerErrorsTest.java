@@ -131,7 +131,7 @@ public class QueryLoggerErrorsTest extends ScassandraTestBase.PerClassCluster {
             .contains(ip)
             .contains(Integer.toString(scassandra.getBinaryPort()))
             .contains(query)
-            .contains(OperationTimedOutException.class.getName());
+            .contains("Timed out waiting for server response");
     }
 
     @DataProvider(name="errors")
