@@ -49,7 +49,9 @@ import org.slf4j.LoggerFactory;
 import static io.netty.handler.timeout.IdleState.ALL_IDLE;
 
 import com.datastax.driver.core.Responses.Result.SetKeyspace;
-import com.datastax.driver.core.exceptions.*;
+import com.datastax.driver.core.exceptions.AuthenticationException;
+import com.datastax.driver.core.exceptions.DriverException;
+import com.datastax.driver.core.exceptions.DriverInternalError;
 import com.datastax.driver.core.utils.MoreFutures;
 
 import static com.datastax.driver.core.Message.Response.Type.ERROR;

@@ -15,9 +15,7 @@
  */
 package com.datastax.driver.core.policies;
 
-import org.assertj.core.api.Fail;
 import org.scassandra.http.client.PrimingRequest;
-import org.testng.annotations.BeforeClass;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -27,12 +25,13 @@ import static org.scassandra.http.client.PrimingRequest.Result.is_bootstrapping;
 import static org.scassandra.http.client.PrimingRequest.Result.overloaded;
 import static org.scassandra.http.client.PrimingRequest.Result.server_error;
 import static org.scassandra.http.client.PrimingRequest.Result.write_request_timeout;
+import static org.scassandra.http.client.PrimingRequest.then;
 
 import com.datastax.driver.core.*;
 import com.datastax.driver.core.exceptions.*;
 
 /**
- * Integration test with a IdempotenceAwareRetryPolicy.
+ * Integration test with an IdempotenceAwareRetryPolicy.
  */
 public class IdempotenceAwareRetryPolicyIntegrationTest extends AbstractRetryPolicyIntegrationTest {
 
@@ -76,8 +75,7 @@ public class IdempotenceAwareRetryPolicyIntegrationTest extends AbstractRetryPol
             scassandras
                 .prime(1, PrimingRequest.queryBuilder()
                     .withQuery("mock query")
-                    .withFixedDelay(1000)
-                    .withRows(row("result", "result1"))
+                    .withThen(then().withFixedDelay(1000L).withRows(row("result", "result1")))
                     .build());
             try {
                 query();
@@ -106,8 +104,7 @@ public class IdempotenceAwareRetryPolicyIntegrationTest extends AbstractRetryPol
             scassandras
                 .prime(1, PrimingRequest.queryBuilder()
                     .withQuery("mock query")
-                    .withFixedDelay(1000)
-                    .withRows(row("result", "result1"))
+                    .withThen(then().withFixedDelay(1000L).withRows(row("result", "result1")))
                     .build());
             session.execute(new SimpleStatement("mock query").setIdempotent(true));
             assertOnUnexpectedErrorWasCalled(1);

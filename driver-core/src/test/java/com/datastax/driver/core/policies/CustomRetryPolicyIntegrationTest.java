@@ -21,6 +21,7 @@ import org.testng.annotations.Test;
 
 import static org.assertj.core.api.Fail.fail;
 import static org.scassandra.http.client.PrimingRequest.Result.*;
+import static org.scassandra.http.client.PrimingRequest.then;
 
 import com.datastax.driver.core.*;
 import com.datastax.driver.core.exceptions.*;
@@ -77,8 +78,7 @@ public class CustomRetryPolicyIntegrationTest extends AbstractRetryPolicyIntegra
             scassandras
                 .prime(1, PrimingRequest.queryBuilder()
                     .withQuery("mock query")
-                    .withFixedDelay(1000)
-                    .withRows(row("result", "result1"))
+                    .withThen(then().withFixedDelay(1000L).withRows(row("result", "result1")))
                     .build());
             try {
                 query();

@@ -26,6 +26,7 @@ import org.testng.annotations.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.fail;
 import static org.scassandra.http.client.PrimingRequest.Result.*;
+import static org.scassandra.http.client.PrimingRequest.then;
 
 import java.util.Collections;
 
@@ -145,18 +146,15 @@ public class DefaultRetryPolicyIntegrationTest extends AbstractRetryPolicyIntegr
             scassandras
                 .prime(1, PrimingRequest.queryBuilder()
                     .withQuery("mock query")
-                    .withFixedDelay(1000)
-                    .withRows(row("result", "result1"))
+                    .withThen(then().withFixedDelay(1000L).withRows(row("result", "result1")))
                     .build())
                 .prime(2, PrimingRequest.queryBuilder()
                     .withQuery("mock query")
-                    .withFixedDelay(1000)
-                    .withRows(row("result", "result2"))
+                    .withThen(then().withFixedDelay(1000L).withRows(row("result", "result2")))
                     .build())
                 .prime(3, PrimingRequest.queryBuilder()
                     .withQuery("mock query")
-                    .withFixedDelay(1000)
-                    .withRows(row("result", "result3"))
+                    .withThen(then().withFixedDelay(1000L).withRows(row("result", "result3")))
                     .build());
             try {
                 query();

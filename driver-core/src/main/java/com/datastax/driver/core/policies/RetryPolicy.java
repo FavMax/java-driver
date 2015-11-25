@@ -192,5 +192,4 @@ public interface RetryPolicy {
      * be thrown for the operation.
      */
     public RetryDecision onUnavailable(Statement statement, ConsistencyLevel cl, int requiredReplica, int aliveReplica, int nbRetry);
-
 }
