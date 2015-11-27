@@ -15,10 +15,15 @@
  */
 package com.datastax.driver.mapping;
 
-import java.nio.ByteBuffer;
-import java.util.*;
+import com.datastax.driver.core.ExecutionInfo;
+import com.datastax.driver.core.ProtocolVersion;
+import com.datastax.driver.core.ResultSet;
+import com.datastax.driver.core.Row;
 
-import com.datastax.driver.core.*;
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
 
 /**
  * A {@code ResultSet} mapped to an entity class.
@@ -41,7 +46,7 @@ public class Result<T> implements Iterable<T> {
         this.useAlias = useAlias;
     }
 
-    private T map(Row row) {
+    public T map(Row row) {
         T entity = mapper.newEntity();
         for (ColumnMapper<T> cm : mapper.allColumns()) {
             String name = cm.getAlias() != null && this.useAlias ? cm.getAlias() : cm.getColumnName();
